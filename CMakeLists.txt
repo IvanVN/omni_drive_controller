@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(omni_drive_controller)
 
+set(CMAKE_CXX_FLAGS "-std=c++11 -Wall ${CMAKE_CXX_FLAGS}")
+set(CMAKE_BUILD_TYPE Debug)
+
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
