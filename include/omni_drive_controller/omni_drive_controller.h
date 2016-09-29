@@ -138,8 +138,9 @@ namespace omni_drive_controller
     void writeJointCommands();
     void updateJointStateHistoryMean();
     void updateJointReferences();
-    void setJointReferenceWithLessChange(double &wheel_speed, double &wheel_angle, double current_wheel_speed, double current_wheel_angle);
-    void setJointReferenceBetweenMotorWheelLimits(double &wheel_speed, double &wheel_angle, int joint_number);
+    void setJointPositionReferenceWithLessChange(double &wheel_speed, double &wheel_angle, double current_wheel_speed, double current_wheel_angle);
+    void setJointPositionReferenceBetweenMotorWheelLimits(double &wheel_speed, double &wheel_angle, int joint_number);
+    void setJointVelocityReferenceBetweenLimits(std::vector<double> &wheel_speed);
     void updateOdometryFromEncoder();
     void publishOdometry();
     bool initController(ros::NodeHandle root_nh, ros::NodeHandle controller_nh);

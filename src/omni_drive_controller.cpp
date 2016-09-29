@@ -1,5 +1,5 @@
 #include <algorithm>
-
+#include <sstream>
 #include <numeric>
 
 #include <ros/ros.h>
@@ -183,9 +183,17 @@ namespace omni_drive_controller
         joint_states_history_.resize(NUMBER_OF_JOINTS);
         for (size_t i = 0; i < NUMBER_OF_JOINTS; i++) {
             joint_states_history_[i] = boost::circular_buffer<double>(joint_states_history_size_);
-            joint_limits_[i] = std::make_pair(-3.0, 3.0); // TODO: initialize limits
+        }
+        
+        // set velocity limits
+        for (size_t i = BEGIN_W; i < END_W; i++) {
+            joint_limits_[i] = std::make_pair(-0.5, 0.5); // TODO: initialize limits 
         }
 
+        // set direction limits
+        for (size_t i = BEGIN_MW; i < END_MW; i++) {
+            joint_limits_[i] = std::make_pair(-3.0, 3.0); // TODO: initialize limits
+        }
         cmd_watchdog_duration_ = ros::Duration(0.1);
         odom_publish_period_ = ros::Duration(1/100);
        
@@ -349,58 +357,67 @@ namespace omni_drive_controller
         // - (3) keep the orientation between -M_PI/2 and +M_PI/2, so the encoders are below the base.
         // in the code, the constraints are checked in reversed order, so the more constraining (1) is checked at the end
 
-        // vectorize so it can be used with different number of wheels
+       
+        std::vector<double> q,a;
+        q.resize(4);
+        a.resize(4);
+
         double x1 = L/2.0; double y1 = W/2.0;
         double wx1 = vx + w * y1;
         double wy1 = vy + w * x1;
-        double q1 = - sign(wx1) * sqrt( wx1*wx1 + wy1*wy1 );  
-        //double a1 = radnorm( atan2( wy1, wx1 ) );
-        double a1 = radnormHalf( atan2( wy1,wx1 )); // contraint (3)
+        q[0] = - sign(wx1) * sqrt( wx1*wx1 + wy1*wy1 );  
+        //double a[0] = radnorm( atan2( wy1, wx1 ) );
+        a[0] = radnormHalf( atan2( wy1,wx1 )); // contraint (3)
+        
         double x2 = L/2.0; double y2 = W/2.0;
         double wx2 = vx - w * y2;
         double wy2 = vy + w * x2;
-        double q2 = sign(wx2) * sqrt( wx2*wx2 + wy2*wy2 );
-        //double a2 = radnorm( atan2( wy2, wx2 ) );
-        double a2 = radnormHalf( atan2 (wy2,wx2)); // contraint (3)
+        q[1] = sign(wx2) * sqrt( wx2*wx2 + wy2*wy2 );
+        //double a[1] = radnorm( atan2( wy2, wx2 ) );
+        a[1] = radnormHalf( atan2 (wy2,wx2)); // contraint (3)
+        
         double x3 = L/2.0; double y3 = W/2.0;
         double wx3 = vx - w * y3;
         double wy3 = vy - w * x3;
-        double q3 = sign(wx3)*sqrt( wx3*wx3 + wy3*wy3 );
-        //double a3 = radnorm( atan2( wy3, wx3 ) );
-        double a3 = radnormHalf( atan2(wy3 , wx3)); // contraint (3)
+        q[2] = sign(wx3)*sqrt( wx3*wx3 + wy3*wy3 );
+        //double a[2] = radnorm( atan2( wy3, wx3 ) );
+        a[2] = radnormHalf( atan2(wy3 , wx3)); // contraint (3)
+        
         double x4 = L/2.0; double y4 = W/2.0;
         double wx4 = vx + w * y4;
         double wy4 = vy - w * x4;
-        double q4 = -sign(wx4)*sqrt( wx4*wx4 + wy4*wy4 );
-        //double a4 = radnorm( atan2( wy4, wx4 ) );
-        double a4 = radnormHalf( atan2(wy4,wx4)); // contraint (3)
+        q[3] = -sign(wx4)*sqrt( wx4*wx4 + wy4*wy4 );
+        //double a[3] = radnorm( atan2( wy4, wx4 ) );
+        a[3] = radnormHalf( atan2(wy4,wx4)); // contraint (3)
 	  
         //constraint (2)
-        setJointReferenceWithLessChange(q1,a1,joint_states_mean_[FRONT_RIGHT_W], joint_references_[FRONT_RIGHT_MW]);
-        setJointReferenceWithLessChange(q2,a2,joint_states_mean_[FRONT_LEFT_W],  joint_references_[FRONT_LEFT_MW]);
-        setJointReferenceWithLessChange(q3,a3,joint_states_mean_[BACK_LEFT_W],   joint_references_[BACK_LEFT_MW]);
-        setJointReferenceWithLessChange(q4,a4,joint_states_mean_[BACK_RIGHT_W],  joint_references_[BACK_RIGHT_MW]);
+        setJointPositionReferenceWithLessChange(q[0], a[0], joint_states_mean_[FRONT_RIGHT_W], joint_references_[FRONT_RIGHT_MW]);
+        setJointPositionReferenceWithLessChange(q[1], a[1], joint_states_mean_[FRONT_LEFT_W],  joint_references_[FRONT_LEFT_MW]);
+        setJointPositionReferenceWithLessChange(q[2], a[2], joint_states_mean_[BACK_LEFT_W],   joint_references_[BACK_LEFT_MW]);
+        setJointPositionReferenceWithLessChange(q[3], a[3], joint_states_mean_[BACK_RIGHT_W],  joint_references_[BACK_RIGHT_MW]);
 
         //constraint (1)
-        setJointReferenceBetweenMotorWheelLimits(q1, a1, FRONT_RIGHT_MW);
-        setJointReferenceBetweenMotorWheelLimits(q2, a2, FRONT_LEFT_MW);
-        setJointReferenceBetweenMotorWheelLimits(q3, a3, BACK_LEFT_MW);
-        setJointReferenceBetweenMotorWheelLimits(q4, a4, BACK_RIGHT_MW);
+        setJointPositionReferenceBetweenMotorWheelLimits(q[0], a[0], FRONT_RIGHT_MW);
+        setJointPositionReferenceBetweenMotorWheelLimits(q[1], a[1], FRONT_LEFT_MW);
+        setJointPositionReferenceBetweenMotorWheelLimits(q[2], a[2], BACK_LEFT_MW);
+        setJointPositionReferenceBetweenMotorWheelLimits(q[3], a[3], BACK_RIGHT_MW);
 
-        //ROS_INFO("wy1 wx1 %5.2f %5.2f", wy1, wx1);
-        //ROS_INFO_THROTTLE(1,"q1234=(%5.2f, %5.2f, %5.2f, %5.2f)   a1234=(%5.2f, %5.2f, %5.2f, %5.2f)", q1,q2,q3,q4, a1,a2,a3,a4);
+        //ROS_INFO_THROTTLE(1,"q1234=(%5.2f, %5.2f, %5.2f, %5.2f)   a1234=(%5.2f, %5.2f, %5.2f, %5.2f)", q[0],q[1],q[2],q[3], a[0],a[1],a[2],a[3]);
+
+        // joint velocity references are scaled so each wheel does not exceed it's maximum velocity
+        setJointVelocityReferenceBetweenLimits(q);
 
         // Motor control actions	  
         // Axis are not reversed in the omni (swerve) configuration
-        joint_references_[FRONT_RIGHT_W] = q1;  
-        joint_references_[FRONT_LEFT_W] = q2;
-        joint_references_[BACK_LEFT_W] = q3;
-        joint_references_[BACK_RIGHT_W] = q4;
+        joint_references_[FRONT_RIGHT_W] = q[0];  
+        joint_references_[FRONT_LEFT_W] = q[1];
+        joint_references_[BACK_LEFT_W] = q[2];
+        joint_references_[BACK_RIGHT_W] = q[3];
 
-        joint_references_[FRONT_RIGHT_MW] = a1;  
-        joint_references_[FRONT_LEFT_MW] = a2;
-        joint_references_[BACK_LEFT_MW] = a3;
-        joint_references_[BACK_RIGHT_MW] = a4;
+        joint_references_[FRONT_RIGHT_MW] = a[0];  
+        joint_references_[FRONT_LEFT_MW] = a[1];
+        joint_references_[BACK_LEFT_MW] = a[2];
+        joint_references_[BACK_RIGHT_MW] = a[3];
         
     }
 
@@ -437,6 +454,7 @@ namespace omni_drive_controller
         double F = (v3y + v4y) / 2.0;
         double G = (v1x + v4x) / 2.0;
         double H = (v2x + v3x) / 2.0;
+        
         double w = ((E-F)/wheel_base_ + (G-H)/track_width_) / 2.0;
         double vx = (A+B) / 2.0;
         double vy = (C+D) / 2.0; 
@@ -458,6 +476,10 @@ namespace omni_drive_controller
         qt.setRPY(0,0,pose_encoder_.theta);
         vt = tf::Vector3 (pose_encoder_.x, pose_encoder_.y, 0);
 
+        odom_.header.stamp = ros::Time::now();
+        odom_.header.frame_id = odom_frame_;
+        odom_.child_frame_id = robot_base_frame_;
+
         odom_.pose.pose.position.x = vt.x();
         odom_.pose.pose.position.y = vt.y();
         odom_.pose.pose.position.z = vt.z();
@@ -467,9 +489,9 @@ namespace omni_drive_controller
         odom_.pose.pose.orientation.z = qt.z();
         odom_.pose.pose.orientation.w = qt.w();
 
-        odom_.twist.twist.angular.z = w ;
         odom_.twist.twist.linear.x = vx;
         odom_.twist.twist.linear.y = vy;    
+        odom_.twist.twist.angular.z = w;
     }
 
     void OmniDriveController::cmdVelCallback(const geometry_msgs::Twist::ConstPtr& cmd_msg)
@@ -499,7 +521,7 @@ namespace omni_drive_controller
 
     //wheels can operate forward or backward, so each pair of angle+velocity has it's mirrored pair that results in the same movement
     //this function checks which one of both keeps the less change from the current configuration
-    void OmniDriveController::setJointReferenceWithLessChange(double &wheel_speed, double &wheel_angle, double current_wheel_speed, double current_wheel_angle)
+    void OmniDriveController::setJointPositionReferenceWithLessChange(double &wheel_speed, double &wheel_angle, double current_wheel_speed, double current_wheel_angle)
     {
         double mirrored_wheel_speed = -wheel_speed;
         double mirrored_wheel_angle = (wheel_angle > 0) ? wheel_angle - M_PI : wheel_angle + M_PI;
@@ -516,7 +538,7 @@ namespace omni_drive_controller
 
     //as the motorwheels can only rotate between their lower and upper limits, this function checks that the reference is between that limit
     //if it isn't, sets the mirrored pair
-    void OmniDriveController::setJointReferenceBetweenMotorWheelLimits(double &wheel_speed, double &wheel_angle, int joint_number)
+    void OmniDriveController::setJointPositionReferenceBetweenMotorWheelLimits(double &wheel_speed, double &wheel_angle, int joint_number)
     {
         double lower_limit = joint_limits_[joint_number].first;
         double upper_limit = joint_limits_[joint_number].second;
@@ -539,5 +561,38 @@ namespace omni_drive_controller
             ROS_INFO_THROTTLE(1, "angle above limit");
             return;
         }
+    }
+
+    void OmniDriveController::setJointVelocityReferenceBetweenLimits(std::vector<double> &wheel_speed)
+    {
+        double max_scale_factor = 1.0;
+
+        for (size_t i = BEGIN_W; i < END_W; i++) {
+            double lower_limit = joint_limits_[i].first;
+            double upper_limit = joint_limits_[i].second;
+
+            double lower_scale_factor, upper_scale_factor;
+            lower_scale_factor = upper_scale_factor = 1.0;
+
+            if (wheel_speed[i] < lower_limit)
+                lower_scale_factor = std::abs(wheel_speed[i]/lower_limit);
+            if (upper_limit < wheel_speed[i])
+                upper_scale_factor = std::abs(wheel_speed[i]/upper_limit);
+
+            max_scale_factor = std::max(max_scale_factor, std::max(lower_scale_factor, upper_scale_factor));
+        }
+
+//        std::ostringstream oss;
+//        oss << "scale_factor: " << max_scale_factor;
+//        for (size_t i = BEGIN_W; i < END_W; i++) {
+//            oss << " wheel " << i << " : " << wheel_speed[i] << " (" << wheel_speed[i] / max_scale_factor << ")";
+//        }
+//        
+//        ROS_INFO_STREAM_THROTTLE(1, oss.str());
+
+        for (size_t i = BEGIN_W; i < END_W; i++) {
+            wheel_speed[i] /= max_scale_factor;
+        }
+        
     }
 }
