@@ -140,25 +140,56 @@ namespace omni_drive_controller
 
     bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandle controller_nh)
     {
+        bool everything_ok = true;
 
-        // TODO: read parameters
-        wheel_base_ = 0.934;    
-        track_width_ = 0.57;    
-        wheel_diameter_ = 0.15; 
-        wheel_torque_ = 40.0;   
+        controller_name_ = "omni_drive_controller";
 
-        controller_name_ = "omni_drive_controller"; // TODO: set name
+        // the topics are hardcoded, the way to change them is by using the remap option
         command_topic_ = "cmd_vel";
         odom_topic_ = "odom";
+
+        // default values for some variables that can change using the param server
+        // related to kinematics
+        wheel_base_ = 0.934;
+        track_width_ = 0.57;
+        wheel_diameter_ = 0.186;
+        max_linear_ = 0.1;
+        max_angular_ = 0.1;
+        controller_nh.param("wheel_base", wheel_base_, wheel_base_);
+        controller_nh.param("track_width", track_width_, track_width_);
+        controller_nh.param("wheel_diameter", wheel_diameter_, wheel_diameter_); 
+        controller_nh.param("max_linear", max_linear_, max_linear_);
+        
+        if (max_linear_ < 0) {
+            ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Watch out! you set max_linear, which is the limit of the modulo of the max linear speed, to a negative value. I will gently set it as positive.");
+            max_linear_ = -max_linear_;
+        }
+        if (max_angular_ < 0) {
+            ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Watch out! you set max_angular to a negative value. I will gently set it as positive.");
+            max_angular_ = -max_angular_;
+        }
+
+        controller_nh.param("max_angular", max_angular_, max_angular_);
+        // related to coordinate frames
         odom_frame_ = "odom";
         robot_base_frame_ = "base_footprint";
         odom_broadcast_tf_ = true;
+        controller_nh.param("odom_frame", odom_frame_, odom_frame_);
+        controller_nh.param("robot_base_frame", robot_base_frame_, robot_base_frame_);
+        controller_nh.param("odom_broadcast_tf", odom_broadcast_tf_, odom_broadcast_tf_);
+        // related to timing
+        double cmd_watchdog = 0.1;
+        double odom_frequency = 100;
+        controller_nh.param("cmd_watchdog_duration", cmd_watchdog, cmd_watchdog);
+        controller_nh.param("odom_publish_frequency", odom_frequency, odom_frequency);
 
+        // begin to register ros stuff
+        cmd_watchdog_duration_ = ros::Duration(cmd_watchdog);
+        odom_publish_period_ = ros::Duration(1.0/odom_frequency);
 
         cmd_vel_subscriber_ = root_nh.subscribe(command_topic_, 1, &OmniDriveController::cmdVelCallback, this); 
         odom_publisher_ = root_nh.advertise<nav_msgs::Odometry>(odom_topic_, 1);
         transform_broadcaster_ = new tf::TransformBroadcaster();
-        
 
         joints_.resize(NUMBER_OF_JOINTS);
 
@@ -167,6 +198,7 @@ namespace omni_drive_controller
         joint_references_.resize(NUMBER_OF_JOINTS);
         joint_commands_.resize(NUMBER_OF_JOINTS);
 
+        // for now, the controller is for a robot with four wheel, and the joint names are these and only these
         joint_names_.resize(NUMBER_OF_JOINTS);
         joint_names_[FRONT_RIGHT_W] = "front_right_wheel_joint";
         joint_names_[FRONT_LEFT_W] = "front_left_wheel_joint";
@@ -187,17 +219,52 @@ namespace omni_drive_controller
         
         // set velocity limits
         for (size_t i = BEGIN_W; i < END_W; i++) {
-            joint_limits_[i] = std::make_pair(-0.5, 0.5); // TODO: initialize limits 
+            std::string param_limit_name;
+            double max_speed = 0;
+
+            param_limit_name = "joint/" + joint_names_[i] + "/max_speed";
+            if (controller_nh.hasParam(param_limit_name) == false) { // limit does not exist!
+                ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_ << "::initController: cannot find parameter " << param_limit_name << ". It is required!");
+                everything_ok = false;
+            }
+            else {
+                controller_nh.param(param_limit_name, max_speed, max_speed);
+            }
+            
+            joint_limits_[i] = std::make_pair(-max_speed, max_speed);
         }
 
         // set direction limits
         for (size_t i = BEGIN_MW; i < END_MW; i++) {
-            joint_limits_[i] = std::make_pair(-3.0, 3.0); // TODO: initialize limits
+            std::string param_limit_name;
+            double min_angle = 0, max_angle = 0;
+
+            param_limit_name = "joint/" + joint_names_[i] + "/min_angle";
+            if (controller_nh.hasParam(param_limit_name) == false) { // limit does not exist!
+                ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_ << "::initController: cannot find parameter " << param_limit_name << ". It is required!");
+                everything_ok = false;
+            }
+            else {
+                controller_nh.param(param_limit_name, min_angle, min_angle);
+            }
+
+            param_limit_name = "joint/" + joint_names_[i] + "/max_angle";
+            if (controller_nh.hasParam(param_limit_name) == false) { // limit does not exist!
+                ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_ << "::initController: cannot find parameter " << param_limit_name << ". It is required!");
+                everything_ok = false;
+            }
+            else {
+                controller_nh.param(param_limit_name, max_angle, max_angle);
+            }
+
+            joint_limits_[i] = std::make_pair(min_angle, max_angle);
         }
-        cmd_watchdog_duration_ = ros::Duration(0.1);
-        odom_publish_period_ = ros::Duration(1/100);
-       
-        return true;
+        
+        if (everything_ok) {
+            ROS_INFO_STREAM_NAMED(controller_name_, controller_name_ << "::initController: everything is OK!");
+        }
+        
+        return everything_ok;
     }
 
     std::string OmniDriveController::getHardwareInterfaceType() const
@@ -213,7 +280,7 @@ namespace omni_drive_controller
      */
     void OmniDriveController::starting(const ros::Time& time)
     {
-        ROS_INFO_STREAM_NAMED(controller_name_, "Starting!");
+        ROS_INFO_STREAM_NAMED(controller_name_, controller_name_ << ": Starting!");
         odom_last_sent_ = ros::Time::now();
         odom_last_update_ = ros::Time::now(); // check if there is some value that invalidates the result of a substraction (equals 0). if there isn't any, seta flag for first_update_odometry
         cmd_last_stamp_ = ros::Time(0); // maybe it is better to set it to 0, so if no cmd is received
@@ -230,10 +297,9 @@ namespace omni_drive_controller
      * \brief Stops controller
      * \param time Current time
      */
-    void OmniDriveController::stopping(const ros::Time& /*time*/)
+    void OmniDriveController::stopping(const ros::Time& time)
     {
-        // TODO: check what to do
-        ROS_INFO_STREAM_NAMED(controller_name_, "Stopping!");
+        ROS_INFO_STREAM_NAMED(controller_name_, controller_name_ << "Stopping!");
     }
 
     void OmniDriveController::update(const ros::Time& time, const ros::Duration& period)
@@ -269,7 +335,7 @@ namespace omni_drive_controller
     {
         // read wheel velocity: convert from angular to linear
         for (size_t i = BEGIN_W; i < END_W; i++) {
-            joint_states_[i]  = normToZero(joints_[i].getVelocity() * (wheel_diameter_ / 2.0));
+            joint_states_[i]  = normToZero(joints_[i].getVelocity() * (wheel_diameter_/2.0));
         }
 
         // read motor wheel position
@@ -322,7 +388,7 @@ namespace omni_drive_controller
         // if motorwheels are in position, set velocity commands as reference
         if (motorwheels_on_position) {
             for (size_t i = BEGIN_W; i < END_W; i++) 
-                joint_commands_[i] = joint_references_[i] / (wheel_diameter_ / 2.0);
+                joint_commands_[i] = joint_references_[i];
 
         } else {// if not, set to 0
             for (size_t i = BEGIN_W; i < END_W; i++)
@@ -336,6 +402,14 @@ namespace omni_drive_controller
         // send commands to actuators
         for (size_t i = 0; i < NUMBER_OF_JOINTS; i++)
             joints_[i].setCommand(joint_commands_[i]);
+
+        std::ostringstream oss;
+        oss << "commands:";
+        for (size_t i = BEGIN_W; i < END_W; i++) {
+            oss << " wheel " << i << " : " << joint_commands_[i];
+        }
+        
+        //ROS_INFO_STREAM_THROTTLE(1, oss.str());
     }
 
     void OmniDriveController::updateJointReferences()
@@ -362,34 +436,41 @@ namespace omni_drive_controller
         q.resize(4);
         a.resize(4);
 
+        // q = rad/s
+        // a = rad
+
         double x1 = L/2.0; double y1 = W/2.0;
         double wx1 = vx + w * y1;
         double wy1 = vy + w * x1;
-        q[0] = - sign(wx1) * sqrt( wx1*wx1 + wy1*wy1 );  
+        q[0] = - sign(wx1) * sqrt( wx1*wx1 + wy1*wy1 ); // m/s
+        q[0] = q[0] / (wheel_diameter_/2.0); // convert to rad/s
         //double a[0] = radnorm( atan2( wy1, wx1 ) );
         a[0] = radnormHalf( atan2( wy1,wx1 )); // contraint (3)
         
         double x2 = L/2.0; double y2 = W/2.0;
         double wx2 = vx - w * y2;
         double wy2 = vy + w * x2;
-        q[1] = sign(wx2) * sqrt( wx2*wx2 + wy2*wy2 );
+        q[1] = sign(wx2) * sqrt( wx2*wx2 + wy2*wy2 ); // m/s
+        q[1] = q[1] / (wheel_diameter_/2.0); // convert to rad/s
         //double a[1] = radnorm( atan2( wy2, wx2 ) );
         a[1] = radnormHalf( atan2 (wy2,wx2)); // contraint (3)
         
         double x3 = L/2.0; double y3 = W/2.0;
         double wx3 = vx - w * y3;
         double wy3 = vy - w * x3;
-        q[2] = sign(wx3)*sqrt( wx3*wx3 + wy3*wy3 );
+        q[2] = sign(wx3)*sqrt( wx3*wx3 + wy3*wy3 ); // m/s
+        q[2] = q[2] / (wheel_diameter_/2.0); // convert to rad/s
         //double a[2] = radnorm( atan2( wy3, wx3 ) );
         a[2] = radnormHalf( atan2(wy3 , wx3)); // contraint (3)
         
         double x4 = L/2.0; double y4 = W/2.0;
         double wx4 = vx + w * y4;
         double wy4 = vy - w * x4;
-        q[3] = -sign(wx4)*sqrt( wx4*wx4 + wy4*wy4 );
+        q[3] = -sign(wx4)*sqrt( wx4*wx4 + wy4*wy4 ); // m/s
+        q[3] = q[3] / (wheel_diameter_/2.0); // convert to rad/s
         //double a[3] = radnorm( atan2( wy4, wx4 ) );
         a[3] = radnormHalf( atan2(wy4,wx4)); // contraint (3)
-	  
+	 
         //constraint (2)
         setJointPositionReferenceWithLessChange(q[0], a[0], joint_states_mean_[FRONT_RIGHT_W], joint_references_[FRONT_RIGHT_MW]);
         setJointPositionReferenceWithLessChange(q[1], a[1], joint_states_mean_[FRONT_LEFT_W],  joint_references_[FRONT_LEFT_MW]);
@@ -501,6 +582,27 @@ namespace omni_drive_controller
 //        v_ref_y_ = cmd_msg->linear.y;
 //        w_ref_ = cmd_msg->angular.z;
         cmd_ = *cmd_msg;
+
+        // check command limits
+
+        // first linear
+        double vx = cmd_.linear.x;
+        double vy = cmd_.linear.y;
+        double v = std::sqrt(vx*vx + vy*vy);
+
+        // if max_linear limit exceeded
+        if (v > max_linear_) { 
+            // scale!
+            cmd_.linear.x = cmd_.linear.x / v;
+            cmd_.linear.y = cmd_.linear.y / v;
+        }
+
+        // then angular
+        if (cmd_.angular.z > max_angular_)
+            cmd_.angular.z = max_angular_;
+        if (cmd_.angular.z < -max_angular_)
+            cmd_.angular.z = -max_angular_;
+
         cmd_last_stamp_ = ros::Time::now();
     }
 
@@ -537,7 +639,7 @@ namespace omni_drive_controller
     }
 
     //as the motorwheels can only rotate between their lower and upper limits, this function checks that the reference is between that limit
-    //if it isn't, sets the mirrored pair
+    //if it isn't, sets the mirrored pair, which has the angle rotated half a turn and the speed is the negative speed
     void OmniDriveController::setJointPositionReferenceBetweenMotorWheelLimits(double &wheel_speed, double &wheel_angle, int joint_number)
     {
         double lower_limit = joint_limits_[joint_number].first;
@@ -552,13 +654,13 @@ namespace omni_drive_controller
             wheel_angle += M_PI;
             wheel_speed = -wheel_speed;
             return;
-            ROS_INFO_THROTTLE(1, "angle below limit");
+            ROS_DEBUG_STREAM_THROTTLE_NAMED(1.0, controller_name_, controller_name_ << ": desired angle is below the limit. Turning!");
         }
         // if angle is above the upper_limit, substract pi and change speed sign
         if (upper_limit < wheel_angle) {
             wheel_angle -= M_PI;
             wheel_speed = -wheel_speed;
-            ROS_INFO_THROTTLE(1, "angle above limit");
+            ROS_DEBUG_STREAM_THROTTLE_NAMED(1.0, controller_name_, controller_name_ << ": desired angle is above the limit. Turning!");
             return;
         }
     }
@@ -581,14 +683,6 @@ namespace omni_drive_controller
 
             max_scale_factor = std::max(max_scale_factor, std::max(lower_scale_factor, upper_scale_factor));
         }
-
-//        std::ostringstream oss;
-//        oss << "scale_factor: " << max_scale_factor;
-//        for (size_t i = BEGIN_W; i < END_W; i++) {
-//            oss << " wheel " << i << " : " << wheel_speed[i] << " (" << wheel_speed[i] / max_scale_factor << ")";
-//        }
-//        
-//        ROS_INFO_STREAM_THROTTLE(1, oss.str());
 
         for (size_t i = BEGIN_W; i < END_W; i++) {
             wheel_speed[i] /= max_scale_factor;

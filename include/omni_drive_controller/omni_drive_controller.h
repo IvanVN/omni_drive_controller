@@ -89,49 +89,51 @@ namespace omni_drive_controller
 
     private:
 
-    // Control stuff. 
-    std::vector<hardware_interface::JointHandle> joints_; // joint handles: to read current state and send commands, // XXX:initialized
-    std::vector<std::string> joint_names_; // joint names: to get the handle of each joint, // XXX:initialized
+    // Control stuff
+    std::vector<hardware_interface::JointHandle> joints_; // joint handles: to read current state and send commands
+    std::vector<std::string> joint_names_; // joint names: to get the handle of each joint
 
-    std::vector<std::pair<double, double> > joint_limits_; //lower, upper limits, // XXX:initialized
+    std::vector<std::pair<double, double> > joint_limits_; //lower, upper limits
     
-	std::vector<double> joint_states_; // current joint state: position or velocity, // XXX: initialized
-    std::vector<double> joint_states_mean_; // current joint state mean: used to calculate the reference according to the constraints, // XXX: initialized
-    std::vector<double> joint_references_; // current reference for each joint, // XXX: initialized
-	std::vector<double> joint_commands_; // current command to be sent: may differ from reference is the wheels are not in position or if the watchdog times out, // XXX:initialized
+	std::vector<double> joint_states_; // current joint state: position or velocity
+    std::vector<double> joint_states_mean_; // current joint state mean: used to calculate the reference according to the constraints
+    std::vector<double> joint_references_; // current reference for each joint
+	std::vector<double> joint_commands_; // current command to be sent: may differ from reference is the wheels are not in position or if the watchdog times out
 
-    std::vector<boost::circular_buffer<double> > joint_states_history_; // used to calculate the current joint state as the mean of the previous joint states, // XXX:initialized
-    unsigned int joint_states_history_size_; // size of the joint history,  XXX:initialized
+    std::vector<boost::circular_buffer<double> > joint_states_history_; // used to calculate the current joint state as the mean of the previous joint states
+    unsigned int joint_states_history_size_; // size of the joint history
     
     // Data
-    geometry_msgs::Twist cmd_; // holds last velocity command, // XXX: initialized on starting
-    ros::Time cmd_last_stamp_; // holds last velocity command time stamp, used to check the watchdog, // XXX: initialized on starting
-    nav_msgs::Odometry odom_; // holds odometry, // XXX: initialized on starting
-    geometry_msgs::Pose2D pose_encoder_; // holds position calculated from encders, // XXX: initialized on starting
+    geometry_msgs::Twist cmd_; // holds last velocity command
+    ros::Time cmd_last_stamp_; // holds last velocity command time stamp, used to check the watchdog
+    nav_msgs::Odometry odom_; // holds odometry
+    geometry_msgs::Pose2D pose_encoder_; // holds position calculated from encders
 
-    bool cmd_watchdog_timedout_; // true is the watchdog has been activated., // XXX: initializedon starting
-    ros::Duration cmd_watchdog_duration_; // time that has to pass to activate the watchdog, // XXX: initialized
+    bool cmd_watchdog_timedout_; // true is the watchdog has been activated
+    ros::Duration cmd_watchdog_duration_; // time that has to pass to activate the watchdog
 
-    bool odom_broadcast_tf_; // if true, odom must be published also in tf, // XXX: initialized
-    ros::Duration odom_publish_period_; // time between odometry publication updates, // XXX: initialized
-    ros::Time odom_last_sent_; // to check if the odometry must be sent // XXX: initialized on starting
-    ros::Time odom_last_update_; // to use in the odometry calculation // XXX: initialized on starting
+    bool odom_broadcast_tf_; // if true, odom must be published also in tf
+    ros::Duration odom_publish_period_; // time between odometry publication updates
+    ros::Time odom_last_sent_; // to check if the odometry must be sent
+    ros::Time odom_last_update_; // to use in the odometry calculation 
 
     // Wheels configuration
-    double wheel_base_;     // distance between front and rear axles, //XXX initialized
-    double track_width_;    // distance between right and left wheels, //XXX initialized
-    double wheel_diameter_; // wheel diamater, to convert from angular speed to linear, //XXX initialized
-    double wheel_torque_;   // ??, //XXX initialized
-     
-    // ROS stuff
-    std::string controller_name_; // node name, //XXX initialized
-    std::string command_topic_; // topic from where velocity commands are read //XXX initialized
-    std::string odom_topic_; // name of the topic where the odometry is published //XXX initialized
-    std::string odom_frame_; // name of the frame associated to the odometry //XXX initialized
-    std::string robot_base_frame_; // name of the frame associated to the robot. odom_frame_ is published as it's parent //XXX initialized
+    double wheel_base_;     // distance between front and rear axles 
+    double track_width_;    // distance between right and left wheels 
+    double wheel_diameter_; // wheel diamater, to convert from angular speed to linear 
 
-    ros::Publisher odom_publisher_; // topic publisher where the odometry is published //XXX initialized
-    ros::Subscriber cmd_vel_subscriber_; // topic subscriber to receive velocity commands //XXX initialized
+    // Max speed
+    double max_linear_; // max linear speed
+    double max_angular_; // max angular speed
+    // ROS stuff
+    std::string controller_name_; // node name, 
+    std::string command_topic_; // topic from where velocity commands are read 
+    std::string odom_topic_; // name of the topic where the odometry is published 
+    std::string odom_frame_; // name of the frame associated to the odometry 
+    std::string robot_base_frame_; // name of the frame associated to the robot. odom_frame_ is published as it's parent 
+
+    ros::Publisher odom_publisher_; // topic publisher where the odometry is published 
+    ros::Subscriber cmd_vel_subscriber_; // topic subscriber to receive velocity commands 
     tf::TransformBroadcaster *transform_broadcaster_; // to publish odom frame
     //
     void readJointStates();
