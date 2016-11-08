@@ -118,10 +118,10 @@ namespace omni_drive_controller
             ros::NodeHandle& root_nh,
             ros::NodeHandle &controller_nh)
     {
-        joints_[FRONT_RIGHT_W] = hw->getHandle(joint_names_[FRONT_RIGHT_W]);
-        joints_[FRONT_LEFT_W] = hw->getHandle(joint_names_[FRONT_LEFT_W]);
-        joints_[BACK_RIGHT_W] = hw->getHandle(joint_names_[BACK_RIGHT_W]);
-        joints_[BACK_LEFT_W] = hw->getHandle(joint_names_[BACK_LEFT_W]);
+        joints_[FRONT_RIGHT_TRACTION_JOINT] = hw->getHandle(joint_names_[FRONT_RIGHT_TRACTION_JOINT]);
+        joints_[FRONT_LEFT_TRACTION_JOINT] = hw->getHandle(joint_names_[FRONT_LEFT_TRACTION_JOINT]);
+        joints_[BACK_RIGHT_TRACTION_JOINT] = hw->getHandle(joint_names_[BACK_RIGHT_TRACTION_JOINT]);
+        joints_[BACK_LEFT_TRACTION_JOINT] = hw->getHandle(joint_names_[BACK_LEFT_TRACTION_JOINT]);
 
         return true;
     }
@@ -130,10 +130,10 @@ namespace omni_drive_controller
             ros::NodeHandle& root_nh,
             ros::NodeHandle &controller_nh)
     {
-        joints_[FRONT_RIGHT_MW] = hw->getHandle(joint_names_[FRONT_RIGHT_MW]);
-        joints_[FRONT_LEFT_MW] = hw->getHandle(joint_names_[FRONT_LEFT_MW]);
-        joints_[BACK_RIGHT_MW] = hw->getHandle(joint_names_[BACK_RIGHT_MW]);
-        joints_[BACK_LEFT_MW] = hw->getHandle(joint_names_[BACK_LEFT_MW]);
+        joints_[FRONT_RIGHT_DIRECTION_JOINT] = hw->getHandle(joint_names_[FRONT_RIGHT_DIRECTION_JOINT]);
+        joints_[FRONT_LEFT_DIRECTION_JOINT] = hw->getHandle(joint_names_[FRONT_LEFT_DIRECTION_JOINT]);
+        joints_[BACK_RIGHT_DIRECTION_JOINT] = hw->getHandle(joint_names_[BACK_RIGHT_DIRECTION_JOINT]);
+        joints_[BACK_LEFT_DIRECTION_JOINT] = hw->getHandle(joint_names_[BACK_LEFT_DIRECTION_JOINT]);
 
         return true;
     }
@@ -153,7 +153,7 @@ namespace omni_drive_controller
         wheel_base_ = 0.934;
         track_width_ = 0.57;
         wheel_diameter_ = 0.186;
-        max_linear_ = 0.1;
+        linear_speed_limit_ = 0.1;
         max_angular_ = 0.1;
         controller_nh.param("wheel_base", wheel_base_, wheel_base_);
         controller_nh.param("track_width", track_width_, track_width_);
@@ -200,14 +200,14 @@ namespace omni_drive_controller
 
         // for now, the controller is for a robot with four wheel, and the joint names are these and only these
         joint_names_.resize(NUMBER_OF_JOINTS);
-        joint_names_[FRONT_RIGHT_W] = "front_right_wheel_joint";
-        joint_names_[FRONT_LEFT_W] = "front_left_wheel_joint";
-        joint_names_[BACK_RIGHT_W] = "back_right_wheel_joint";
-        joint_names_[BACK_LEFT_W] = "back_left_wheel_joint";
-        joint_names_[FRONT_RIGHT_MW] = "front_right_motor_wheel_joint";
-        joint_names_[FRONT_LEFT_MW] = "front_left_motor_wheel_joint";
-        joint_names_[BACK_RIGHT_MW] = "back_right_motor_wheel_joint";
-        joint_names_[BACK_LEFT_MW] = "back_left_motor_wheel_joint";
+        joint_names_[FRONT_RIGHT_TRACTION_JOINT] = "front_right_wheel_joint";
+        joint_names_[FRONT_LEFT_TRACTION_JOINT] = "front_left_wheel_joint";
+        joint_names_[BACK_RIGHT_TRACTION_JOINT] = "back_right_wheel_joint";
+        joint_names_[BACK_LEFT_TRACTION_JOINT] = "back_left_wheel_joint";
+        joint_names_[FRONT_RIGHT_DIRECTION_JOINT] = "front_right_motor_wheel_joint";
+        joint_names_[FRONT_LEFT_DIRECTION_JOINT] = "front_left_motor_wheel_joint";
+        joint_names_[BACK_RIGHT_DIRECTION_JOINT] = "back_right_motor_wheel_joint";
+        joint_names_[BACK_LEFT_DIRECTION_JOINT] = "back_left_motor_wheel_joint";
         
         joint_limits_.resize(NUMBER_OF_JOINTS);
 
@@ -218,7 +218,7 @@ namespace omni_drive_controller
         }
         
         // set velocity limits
-        for (size_t i = BEGIN_W; i < END_W; i++) {
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
             std::string param_limit_name;
             double max_speed = 0;
 
@@ -235,7 +235,7 @@ namespace omni_drive_controller
         }
 
         // set direction limits
-        for (size_t i = BEGIN_MW; i < END_MW; i++) {
+        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) {
             std::string param_limit_name;
             double min_angle = 0, max_angle = 0;
 
@@ -334,12 +334,12 @@ namespace omni_drive_controller
     void OmniDriveController::readJointStates()
     {
         // read wheel velocity: convert from angular to linear
-        for (size_t i = BEGIN_W; i < END_W; i++) {
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
             joint_states_[i]  = normToZero(joints_[i].getVelocity() * (wheel_diameter_/2.0));
         }
 
         // read motor wheel position
-        for (size_t i = BEGIN_MW; i < END_MW; i++) {
+        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) {
             joint_states_[i] = radnorm(normToZero(joints_[i].getPosition()));
         }
 
@@ -366,7 +366,7 @@ namespace omni_drive_controller
                 joint_commands_[i] = joint_references_[i] = 0;
             }
             //but only send speed commands
-            for (size_t i = BEGIN_W; i < END_W; i++) {
+            for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
                 joints_[i].setCommand(joint_commands_[i]);
             }
             return;
@@ -382,21 +382,21 @@ namespace omni_drive_controller
             mw_orientation_range = min_mw_orientation_range;
 
         bool motorwheels_on_position = true;
-        for (size_t i = BEGIN_MW; i < END_MW; i++)
+        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++)
             motorwheels_on_position &= (std::abs(joint_references_[i] - joint_states_[i]) < mw_orientation_range);
 
         // if motorwheels are in position, set velocity commands as reference
         if (motorwheels_on_position) {
-            for (size_t i = BEGIN_W; i < END_W; i++) 
+            for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) 
                 joint_commands_[i] = joint_references_[i];
 
         } else {// if not, set to 0
-            for (size_t i = BEGIN_W; i < END_W; i++)
+            for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++)
                 joint_commands_[i] = 0;
         }
 
         // always set position command if watchdog hasn't timed out
-        for (size_t i = BEGIN_MW; i < END_MW; i++) 
+        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) 
             joint_commands_[i] = joint_references_[i];
 
         // send commands to actuators
@@ -405,7 +405,7 @@ namespace omni_drive_controller
 
         std::ostringstream oss;
         oss << "commands:";
-        for (size_t i = BEGIN_W; i < END_W; i++) {
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
             oss << " wheel " << i << " : " << joint_commands_[i];
         }
         
@@ -472,16 +472,16 @@ namespace omni_drive_controller
         a[3] = radnormHalf( atan2(wy4,wx4)); // contraint (3)
 	 
         //constraint (2)
-        setJointPositionReferenceWithLessChange(q[0], a[0], joint_states_mean_[FRONT_RIGHT_W], joint_references_[FRONT_RIGHT_MW]);
-        setJointPositionReferenceWithLessChange(q[1], a[1], joint_states_mean_[FRONT_LEFT_W],  joint_references_[FRONT_LEFT_MW]);
-        setJointPositionReferenceWithLessChange(q[2], a[2], joint_states_mean_[BACK_LEFT_W],   joint_references_[BACK_LEFT_MW]);
-        setJointPositionReferenceWithLessChange(q[3], a[3], joint_states_mean_[BACK_RIGHT_W],  joint_references_[BACK_RIGHT_MW]);
+        setJointPositionReferenceWithLessChange(q[0], a[0], joint_states_mean_[FRONT_RIGHT_TRACTION_JOINT], joint_references_[FRONT_RIGHT_DIRECTION_JOINT]);
+        setJointPositionReferenceWithLessChange(q[1], a[1], joint_states_mean_[FRONT_LEFT_TRACTION_JOINT],  joint_references_[FRONT_LEFT_DIRECTION_JOINT]);
+        setJointPositionReferenceWithLessChange(q[2], a[2], joint_states_mean_[BACK_LEFT_TRACTION_JOINT],   joint_references_[BACK_LEFT_DIRECTION_JOINT]);
+        setJointPositionReferenceWithLessChange(q[3], a[3], joint_states_mean_[BACK_RIGHT_TRACTION_JOINT],  joint_references_[BACK_RIGHT_DIRECTION_JOINT]);
 
         //constraint (1)
-        setJointPositionReferenceBetweenMotorWheelLimits(q[0], a[0], FRONT_RIGHT_MW);
-        setJointPositionReferenceBetweenMotorWheelLimits(q[1], a[1], FRONT_LEFT_MW);
-        setJointPositionReferenceBetweenMotorWheelLimits(q[2], a[2], BACK_LEFT_MW);
-        setJointPositionReferenceBetweenMotorWheelLimits(q[3], a[3], BACK_RIGHT_MW);
+        setJointPositionReferenceBetweenMotorWheelLimits(q[0], a[0], FRONT_RIGHT_DIRECTION_JOINT);
+        setJointPositionReferenceBetweenMotorWheelLimits(q[1], a[1], FRONT_LEFT_DIRECTION_JOINT);
+        setJointPositionReferenceBetweenMotorWheelLimits(q[2], a[2], BACK_LEFT_DIRECTION_JOINT);
+        setJointPositionReferenceBetweenMotorWheelLimits(q[3], a[3], BACK_RIGHT_DIRECTION_JOINT);
 
         //ROS_INFO_THROTTLE(1,"q1234=(%5.2f, %5.2f, %5.2f, %5.2f)   a1234=(%5.2f, %5.2f, %5.2f, %5.2f)", q[0],q[1],q[2],q[3], a[0],a[1],a[2],a[3]);
 
@@ -490,15 +490,15 @@ namespace omni_drive_controller
 
         // Motor control actions	  
         // Axis are not reversed in the omni (swerve) configuration
-        joint_references_[FRONT_RIGHT_W] = q[0];  
-        joint_references_[FRONT_LEFT_W] = q[1];
-        joint_references_[BACK_LEFT_W] = q[2];
-        joint_references_[BACK_RIGHT_W] = q[3];
+        joint_references_[FRONT_RIGHT_TRACTION_JOINT] = q[0];  
+        joint_references_[FRONT_LEFT_TRACTION_JOINT] = q[1];
+        joint_references_[BACK_LEFT_TRACTION_JOINT] = q[2];
+        joint_references_[BACK_RIGHT_TRACTION_JOINT] = q[3];
 
-        joint_references_[FRONT_RIGHT_MW] = a[0];  
-        joint_references_[FRONT_LEFT_MW] = a[1];
-        joint_references_[BACK_LEFT_MW] = a[2];
-        joint_references_[BACK_RIGHT_MW] = a[3];
+        joint_references_[FRONT_RIGHT_DIRECTION_JOINT] = a[0];  
+        joint_references_[FRONT_LEFT_DIRECTION_JOINT] = a[1];
+        joint_references_[BACK_LEFT_DIRECTION_JOINT] = a[2];
+        joint_references_[BACK_RIGHT_DIRECTION_JOINT] = a[3];
         
     }
 
@@ -507,16 +507,16 @@ namespace omni_drive_controller
     {
         // Linear speed of each wheel
         double v1, v2, v3, v4; 
-        v1 = joint_states_[FRONT_RIGHT_W];
-        v2 = joint_states_[FRONT_LEFT_W];
-        v3 = joint_states_[BACK_LEFT_W];
-        v4 = joint_states_[BACK_RIGHT_W];
+        v1 = joint_states_[FRONT_RIGHT_TRACTION_JOINT];
+        v2 = joint_states_[FRONT_LEFT_TRACTION_JOINT];
+        v3 = joint_states_[BACK_LEFT_TRACTION_JOINT];
+        v4 = joint_states_[BACK_RIGHT_TRACTION_JOINT];
         // Angular pos of each wheel
         double a1, a2, a3, a4; 
-        a1 = joint_states_[FRONT_RIGHT_MW];  
-        a2 = joint_states_[FRONT_LEFT_MW];
-        a3 = joint_states_[BACK_LEFT_MW];
-        a4 = joint_states_[BACK_RIGHT_MW];
+        a1 = joint_states_[FRONT_RIGHT_DIRECTION_JOINT];  
+        a2 = joint_states_[FRONT_LEFT_DIRECTION_JOINT];
+        a3 = joint_states_[BACK_LEFT_DIRECTION_JOINT];
+        a4 = joint_states_[BACK_RIGHT_DIRECTION_JOINT];
 
         //    double v1x = -spin_ * v1 * cos( a1 ); double v1y = -spin_ * v1 * sin( a1 );  // spin for mirrored axes    
         //    double v2x = -v2 * cos( a2 ); double v2y = -v2 * sin( a2 );
@@ -669,7 +669,7 @@ namespace omni_drive_controller
     {
         double max_scale_factor = 1.0;
 
-        for (size_t i = BEGIN_W; i < END_W; i++) {
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
             double lower_limit = joint_limits_[i].first;
             double upper_limit = joint_limits_[i].second;
 
@@ -684,7 +684,7 @@ namespace omni_drive_controller
             max_scale_factor = std::max(max_scale_factor, std::max(lower_scale_factor, upper_scale_factor));
         }
 
-        for (size_t i = BEGIN_W; i < END_W; i++) {
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
             wheel_speed[i] /= max_scale_factor;
         }
         

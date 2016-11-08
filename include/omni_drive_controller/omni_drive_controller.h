@@ -18,18 +18,18 @@ namespace omni_drive_controller
 {
     
     enum {
-        FRONT_RIGHT_W=0,
-        FRONT_LEFT_W=1,
-        BACK_RIGHT_W=2,
-        BACK_LEFT_W=3,
-        FRONT_RIGHT_MW=4,
-        FRONT_LEFT_MW=5,
-        BACK_RIGHT_MW=6,
-        BACK_LEFT_MW=7,
-        BEGIN_W=0,
-        END_W=4,
-        BEGIN_MW=4,
-        END_MW=8,
+        FRONT_RIGHT_TRACTION_JOINT=0,
+        FRONT_LEFT_TRACTION_JOINT=1,
+        BACK_RIGHT_TRACTION_JOINT=2,
+        BACK_LEFT_TRACTION_JOINT=3,
+        FRONT_RIGHT_DIRECTION_JOINT=4,
+        FRONT_LEFT_DIRECTION_JOINT=5,
+        BACK_RIGHT_DIRECTION_JOINT=6,
+        BACK_LEFT_DIRECTION_JOINT=7,
+        BEGIN_TRACTION_JOINT=0,
+        END_TRACTION_JOINT=4,
+        BEGIN_DIRECTION_JOINT=4,
+        END_DIRECTION_JOINT=8,
         NUMBER_OF_JOINTS=8,
         NUMBER_OF_WHEELS=4
     };
@@ -94,7 +94,7 @@ namespace omni_drive_controller
     std::vector<std::string> joint_names_; // joint names: to get the handle of each joint
 
     std::vector<std::pair<double, double> > joint_limits_; //lower, upper limits
-    
+   
 	std::vector<double> joint_states_; // current joint state: position or velocity
     std::vector<double> joint_states_mean_; // current joint state mean: used to calculate the reference according to the constraints
     std::vector<double> joint_references_; // current reference for each joint
@@ -107,7 +107,7 @@ namespace omni_drive_controller
     geometry_msgs::Twist cmd_; // holds last velocity command
     ros::Time cmd_last_stamp_; // holds last velocity command time stamp, used to check the watchdog
     nav_msgs::Odometry odom_; // holds odometry
-    geometry_msgs::Pose2D pose_encoder_; // holds position calculated from encders
+    geometry_msgs::Pose2D pose_encoder_; // holds position calculated from encoders
 
     bool cmd_watchdog_timedout_; // true is the watchdog has been activated
     ros::Duration cmd_watchdog_duration_; // time that has to pass to activate the watchdog
