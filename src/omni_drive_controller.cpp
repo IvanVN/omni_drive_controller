@@ -153,23 +153,61 @@ namespace omni_drive_controller
         wheel_base_ = 0.934;
         track_width_ = 0.57;
         wheel_diameter_ = 0.186;
+
         linear_speed_limit_ = 0.1;
-        max_angular_ = 0.1;
+        linear_acceleration_limit_ = 0.1;
+        angular_speed_limit_ = 0.1;
+        angular_acceleration_limit_ = 0.1;
+
         controller_nh.param("wheel_base", wheel_base_, wheel_base_);
         controller_nh.param("track_width", track_width_, track_width_);
         controller_nh.param("wheel_diameter", wheel_diameter_, wheel_diameter_); 
-        controller_nh.param("max_linear", max_linear_, max_linear_);
-        
-        if (max_linear_ < 0) {
-            ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Watch out! you set max_linear, which is the limit of the modulo of the max linear speed, to a negative value. I will gently set it as positive.");
-            max_linear_ = -max_linear_;
+       
+
+        if (controller_nh.hasParam("linear_speed_limit") == false) { // limit does not exist!
+            ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Cannot find parameter linear_speed_limit parameter. I will gently set it to " << linear_speed_limit_);
         }
-        if (max_angular_ < 0) {
-            ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Watch out! you set max_angular to a negative value. I will gently set it as positive.");
-            max_angular_ = -max_angular_;
+        else {
+            controller_nh.param("linear_speed_limit", linear_speed_limit_, linear_speed_limit_);
+            if (linear_speed_limit_ < 0) {
+                ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Watch out! You set linear_speed_limit, which is the limit of the modulo of the linear speed, to a negative value. I will gently set it as positive.");
+                linear_speed_limit_ = -linear_speed_limit_;
+            }
+        }
+        
+        if (controller_nh.hasParam("linear_acceleration_limit") == false) { // limit does not exist!
+            ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Cannot find parameter linear_acceleration_limit parameter. I will gently set it to " << linear_acceleration_limit_);
+        }
+        else {
+            controller_nh.param("linear_acceleration_limit", linear_acceleration_limit_, linear_acceleration_limit_);
+            if (linear_acceleration_limit_ < 0) {
+                ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Watch out! You set linear_acceleration_limit, which is the limit of the modulo of the linear acceleration, to a negative value. I will gently set it as positive.");
+                linear_acceleration_limit_ = -linear_acceleration_limit_;
+            }
+        }
+        
+        if (controller_nh.hasParam("angular_speed_limit") == false) { // limit does not exist!
+            ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Cannot find parameter angular_speed_limit parameter. I will gently set it to " << angular_speed_limit_);
+        }
+        else {
+            controller_nh.param("angular_speed_limit", angular_speed_limit_, angular_speed_limit_);
+            if (angular_speed_limit_ < 0) {
+                ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Watch out! You set angular_speed_limit, which is the limit of the modulo of the angular speed, to a negative value. I will gently set it as positive.");
+                angular_speed_limit_ = -angular_speed_limit_;
+            }
+        }
+        
+        if (controller_nh.hasParam("angular_acceleration_limit") == false) { // limit does not exist!
+            ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Cannot find parameter angular_acceleration_limit parameter. I will gently set it to " << angular_acceleration_limit_);
+        }
+        else {
+            controller_nh.param("angular_acceleration_limit", angular_acceleration_limit_, angular_acceleration_limit_);
+            if (angular_acceleration_limit_ < 0) {
+                ROS_WARN_STREAM_NAMED(controller_name_, controller_name_ << "::initController: Watch out! You set angular_acceleration_limit, which is the limit of the modulo of the angular acceleration, to a negative value. I will gently set it as positive.");
+                angular_acceleration_limit_ = -angular_acceleration_limit_;
+            }
         }
 
-        controller_nh.param("max_angular", max_angular_, max_angular_);
         // related to coordinate frames
         odom_frame_ = "odom";
         robot_base_frame_ = "base_footprint";
@@ -287,7 +325,7 @@ namespace omni_drive_controller
    
         // TODO: service to restart odometry?
         odom_ = nav_msgs::Odometry();
-        cmd_ = geometry_msgs::Twist();
+        received_cmd_ = geometry_msgs::Twist();
         pose_encoder_ = geometry_msgs::Pose2D();
 
         cmd_watchdog_timedout_ = true;
@@ -304,6 +342,8 @@ namespace omni_drive_controller
 
     void OmniDriveController::update(const ros::Time& time, const ros::Duration& period)
     {
+
+        limitCommand(period.toSec());
         // read joint states: 
         //  - convert wheel angular velocity to linear velocity
         //  - normalize motor wheel angular position between [-pi, pi] (only needed for simulation)
@@ -329,6 +369,43 @@ namespace omni_drive_controller
         writeJointCommands();
 
         // TODO: soft brake (slow slowing down) and hard brake (hard slowing down)
+    }
+
+    void OmniDriveController::limitCommand(double period)
+    {
+        double vx, vy, w;
+
+        double accel_x = (received_cmd_.linear.x - current_cmd_.linear.x)/period;
+        double accel_y = (received_cmd_.linear.y - current_cmd_.linear.y)/period;
+
+        double total_accel = std::sqrt(accel_x*accel_x + accel_y*accel_y);
+        if (total_accel > linear_acceleration_limit_) {
+            accel_x = accel_x * linear_acceleration_limit_ / total_accel;
+            accel_y = accel_y * linear_acceleration_limit_ / total_accel;
+        }
+
+        vx = current_cmd_.linear.x + accel_x * period;
+        vy = current_cmd_.linear.y + accel_y * period;
+
+        double total_vel = std::sqrt(vx*vx + vy*vy);
+        if (total_vel > linear_speed_limit_) {
+            vx = vx * linear_speed_limit_ / total_vel;
+            vy = vy * linear_speed_limit_ / total_vel;
+        }
+
+        current_cmd_.linear.x = vx;
+        current_cmd_.linear.y = vy;
+
+        double accel_w = (received_cmd_.angular.z - current_cmd_.angular.z)/period;
+        if (std::abs(accel_w) > angular_acceleration_limit_)
+            accel_w = sign(accel_w) * angular_acceleration_limit_;
+
+        w = current_cmd_.angular.z + accel_w * period;
+        if (std::abs(w) > angular_speed_limit_)
+            w = sign(w) * angular_speed_limit_;
+
+        current_cmd_.angular.z = w;
+
     }
 
     void OmniDriveController::readJointStates()
@@ -390,9 +467,14 @@ namespace omni_drive_controller
             for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) 
                 joint_commands_[i] = joint_references_[i];
 
-        } else {// if not, set to 0
+        } 
+        else {// if not, set to 0, and updated the current cmd!
             for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++)
                 joint_commands_[i] = 0;
+
+            current_cmd_.linear.x = 0;
+            current_cmd_.linear.y = 0;
+            current_cmd_.angular.z = 0;
         }
 
         // always set position command if watchdog hasn't timed out
@@ -415,9 +497,9 @@ namespace omni_drive_controller
     void OmniDriveController::updateJointReferences()
     {
         // Speed references for motor control	  
-        double vx = cmd_.linear.x;
-        double vy = cmd_.linear.y;
-        double w = cmd_.angular.z;
+        double vx = current_cmd_.linear.x;
+        double vy = current_cmd_.linear.y;
+        double w =  current_cmd_.angular.z;
 
         // Vehicle characteristics
         double L = wheel_base_; 
@@ -578,30 +660,7 @@ namespace omni_drive_controller
     void OmniDriveController::cmdVelCallback(const geometry_msgs::Twist::ConstPtr& cmd_msg)
     {
         ROS_DEBUG_STREAM_NAMED(controller_name_, "Received command: (" << cmd_msg->linear.x << ")" << ", " << cmd_msg->linear.y << ", " << cmd_msg->angular.z << ")");
-//        v_ref_x_ = cmd_msg->linear.x;
-//        v_ref_y_ = cmd_msg->linear.y;
-//        w_ref_ = cmd_msg->angular.z;
-        cmd_ = *cmd_msg;
-
-        // check command limits
-
-        // first linear
-        double vx = cmd_.linear.x;
-        double vy = cmd_.linear.y;
-        double v = std::sqrt(vx*vx + vy*vy);
-
-        // if max_linear limit exceeded
-        if (v > max_linear_) { 
-            // scale!
-            cmd_.linear.x = cmd_.linear.x / v;
-            cmd_.linear.y = cmd_.linear.y / v;
-        }
-
-        // then angular
-        if (cmd_.angular.z > max_angular_)
-            cmd_.angular.z = max_angular_;
-        if (cmd_.angular.z < -max_angular_)
-            cmd_.angular.z = -max_angular_;
+        received_cmd_ = *cmd_msg;
 
         cmd_last_stamp_ = ros::Time::now();
     }

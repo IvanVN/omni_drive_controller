@@ -104,7 +104,8 @@ namespace omni_drive_controller
     unsigned int joint_states_history_size_; // size of the joint history
     
     // Data
-    geometry_msgs::Twist cmd_; // holds last velocity command
+    geometry_msgs::Twist received_cmd_; // holds last velocity command
+    geometry_msgs::Twist current_cmd_;  // hold current used command (limited). it is updated on the limitCommand function and in the writeJointCommands, because if the direction wheels are not in position, the traction reference is 0 
     ros::Time cmd_last_stamp_; // holds last velocity command time stamp, used to check the watchdog
     nav_msgs::Odometry odom_; // holds odometry
     geometry_msgs::Pose2D pose_encoder_; // holds position calculated from encoders
@@ -122,9 +123,12 @@ namespace omni_drive_controller
     double track_width_;    // distance between right and left wheels 
     double wheel_diameter_; // wheel diamater, to convert from angular speed to linear 
 
-    // Max speed
-    double max_linear_; // max linear speed
-    double max_angular_; // max angular speed
+    // Speed and acceleration limits
+    double linear_speed_limit_;
+    double linear_acceleration_limit_;
+    double angular_speed_limit_;
+    double angular_acceleration_limit_;
+
     // ROS stuff
     std::string controller_name_; // node name, 
     std::string command_topic_; // topic from where velocity commands are read 
@@ -138,6 +142,7 @@ namespace omni_drive_controller
     //
     void readJointStates();
     void writeJointCommands();
+    void limitCommand(double period);
     void updateJointStateHistoryMean();
     void updateJointReferences();
     void setJointPositionReferenceWithLessChange(double &wheel_speed, double &wheel_angle, double current_wheel_speed, double current_wheel_angle);
