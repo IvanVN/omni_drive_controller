@@ -14,6 +14,11 @@
 #include <realtime_tools/realtime_buffer.h>
 #include <realtime_tools/realtime_publisher.h>
 
+#include <robotnik_msgs/set_mode.h>
+#include <robotnik_msgs/get_mode.h>
+#include <robotnik_msgs/set_odometry.h>
+
+
 namespace omni_drive_controller
 {
     
@@ -129,6 +134,8 @@ namespace omni_drive_controller
     double angular_speed_limit_;
     double angular_acceleration_limit_;
 
+	int active_kinematic_mode_;
+
     // ROS stuff
     std::string controller_name_; // node name, 
     std::string command_topic_; // topic from where velocity commands are read 
@@ -139,6 +146,12 @@ namespace omni_drive_controller
     ros::Publisher odom_publisher_; // topic publisher where the odometry is published 
     ros::Subscriber cmd_vel_subscriber_; // topic subscriber to receive velocity commands 
     tf::TransformBroadcaster *transform_broadcaster_; // to publish odom frame
+
+	// Services
+	ros::ServiceServer srv_SetOdometry_;
+	ros::ServiceServer srv_SetMode_;
+	ros::ServiceServer srv_GetMode_;
+
     //
     void readJointStates();
     void writeJointCommands();
@@ -152,6 +165,10 @@ namespace omni_drive_controller
     void publishOdometry();
     bool initController(ros::NodeHandle root_nh, ros::NodeHandle controller_nh);
     void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& cmd_msg);
+    
+	bool srvCallback_SetMode(robotnik_msgs::set_mode::Request& request, robotnik_msgs::set_mode::Response& response);
+	bool srvCallback_GetMode(robotnik_msgs::get_mode::Request& request, robotnik_msgs::get_mode::Response& response);
+	bool srvCallback_SetOdometry(robotnik_msgs::set_odometry::Request &request, robotnik_msgs::set_odometry::Response &response );
       
 };
 PLUGINLIB_EXPORT_CLASS(omni_drive_controller::OmniDriveController, controller_interface::ControllerBase);

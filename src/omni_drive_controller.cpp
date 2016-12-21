@@ -6,6 +6,11 @@
 #include <tf/transform_datatypes.h>
 #include <omni_drive_controller/omni_drive_controller.h>
 
+#define MODE_OMNIDRIVE				1
+#define MODE_SINGLE_ACKERMANN		2
+#define MODE_DUAL_ACKERMANN			3
+#define MODE_SKID_STEERING			4
+
 namespace omni_drive_controller
 {
     double radnorm( double value ) 
@@ -229,6 +234,13 @@ namespace omni_drive_controller
         odom_publisher_ = root_nh.advertise<nav_msgs::Odometry>(odom_topic_, 1);
         transform_broadcaster_ = new tf::TransformBroadcaster();
 
+		// Advertise services
+		srv_SetMode_ = root_nh.advertiseService("set_mode", &OmniDriveController::srvCallback_SetMode, this);
+		srv_GetMode_ = root_nh.advertiseService("get_mode", &OmniDriveController::srvCallback_GetMode, this);
+		srv_SetOdometry_ = root_nh.advertiseService("set_odometry",  &OmniDriveController::srvCallback_SetOdometry, this);
+     
+		active_kinematic_mode_ = MODE_SINGLE_ACKERMANN;
+     
         joints_.resize(NUMBER_OF_JOINTS);
 
         joint_states_.resize(NUMBER_OF_JOINTS);
@@ -463,19 +475,19 @@ namespace omni_drive_controller
             motorwheels_on_position &= (std::abs(joint_references_[i] - joint_states_[i]) < mw_orientation_range);
 
         // if motorwheels are in position, set velocity commands as reference
-        if (motorwheels_on_position) {
-            for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) 
-                joint_commands_[i] = joint_references_[i];
-
-        } 
-        else {// if not, set to 0, and updated the current cmd!
-            for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++)
-                joint_commands_[i] = 0;
-
-            current_cmd_.linear.x = 0;
-            current_cmd_.linear.y = 0;
-            current_cmd_.angular.z = 0;
-        }
+			if (motorwheels_on_position) {
+				for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) 
+					joint_commands_[i] = joint_references_[i];
+				} 
+			else {// if not, set to 0, and updated the current cmd!
+				if (active_kinematic_mode_== MODE_OMNIDRIVE) {
+					for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++)
+						joint_commands_[i] = 0;
+					current_cmd_.linear.x = 0;
+					current_cmd_.linear.y = 0;
+					current_cmd_.angular.z = 0;
+					}
+				}
 
         // always set position command if watchdog hasn't timed out
         for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) 
@@ -521,54 +533,91 @@ namespace omni_drive_controller
         // q = rad/s
         // a = rad
 
-        double x1 = L/2.0; double y1 = W/2.0;
-        double wx1 = vx + w * y1;
-        double wy1 = vy + w * x1;
-        q[0] = - sign(wx1) * sqrt( wx1*wx1 + wy1*wy1 ); // m/s
-        q[0] = q[0] / (wheel_diameter_/2.0); // convert to rad/s
-        //double a[0] = radnorm( atan2( wy1, wx1 ) );
-        a[0] = radnormHalf( atan2( wy1,wx1 )); // contraint (3)
-        
-        double x2 = L/2.0; double y2 = W/2.0;
-        double wx2 = vx - w * y2;
-        double wy2 = vy + w * x2;
-        q[1] = sign(wx2) * sqrt( wx2*wx2 + wy2*wy2 ); // m/s
-        q[1] = q[1] / (wheel_diameter_/2.0); // convert to rad/s
-        //double a[1] = radnorm( atan2( wy2, wx2 ) );
-        a[1] = radnormHalf( atan2 (wy2,wx2)); // contraint (3)
-        
-        double x3 = L/2.0; double y3 = W/2.0;
-        double wx3 = vx - w * y3;
-        double wy3 = vy - w * x3;
-        q[2] = sign(wx3)*sqrt( wx3*wx3 + wy3*wy3 ); // m/s
-        q[2] = q[2] / (wheel_diameter_/2.0); // convert to rad/s
-        //double a[2] = radnorm( atan2( wy3, wx3 ) );
-        a[2] = radnormHalf( atan2(wy3 , wx3)); // contraint (3)
-        
-        double x4 = L/2.0; double y4 = W/2.0;
-        double wx4 = vx + w * y4;
-        double wy4 = vy - w * x4;
-        q[3] = -sign(wx4)*sqrt( wx4*wx4 + wy4*wy4 ); // m/s
-        q[3] = q[3] / (wheel_diameter_/2.0); // convert to rad/s
-        //double a[3] = radnorm( atan2( wy4, wx4 ) );
-        a[3] = radnormHalf( atan2(wy4,wx4)); // contraint (3)
+		if (active_kinematic_mode_==MODE_OMNIDRIVE) {
+			double x1 = L/2.0; double y1 = W/2.0;
+			double wx1 = vx + w * y1;
+			double wy1 = vy + w * x1;
+			q[0] = -sign(wx1) * sqrt( wx1*wx1 + wy1*wy1 ); // m/s
+			q[0] = q[0] / (wheel_diameter_/2.0); // convert to rad/s
+			//double a[0] = radnorm( atan2( wy1, wx1 ) );
+			a[0] = radnormHalf( atan2( wy1,wx1 )); // contraint (3)
+			
+			double x2 = L/2.0; double y2 = W/2.0;
+			double wx2 = vx - w * y2;
+			double wy2 = vy + w * x2;
+			q[1] = sign(wx2) * sqrt( wx2*wx2 + wy2*wy2 ); // m/s
+			q[1] = q[1] / (wheel_diameter_/2.0); // convert to rad/s
+			//double a[1] = radnorm( atan2( wy2, wx2 ) );
+			a[1] = radnormHalf( atan2 (wy2,wx2)); // contraint (3)
+			
+			double x3 = L/2.0; double y3 = W/2.0;
+			double wx3 = vx - w * y3;
+			double wy3 = vy - w * x3;
+			q[2] = sign(wx3)*sqrt( wx3*wx3 + wy3*wy3 ); // m/s
+			q[2] = q[2] / (wheel_diameter_/2.0); // convert to rad/s
+			//double a[2] = radnorm( atan2( wy3, wx3 ) );
+			a[2] = radnormHalf( atan2(wy3 , wx3)); // contraint (3)
+			
+			double x4 = L/2.0; double y4 = W/2.0;
+			double wx4 = vx + w * y4;
+			double wy4 = vy - w * x4;
+			q[3] = -sign(wx4)*sqrt( wx4*wx4 + wy4*wy4 ); // m/s
+			q[3] = q[3] / (wheel_diameter_/2.0); // convert to rad/s
+			//double a[3] = radnorm( atan2( wy4, wx4 ) );
+			a[3] = radnormHalf( atan2(wy4,wx4)); // contraint (3)
+
+			//constraint (2)
+			setJointPositionReferenceWithLessChange(q[0], a[0], joint_states_mean_[FRONT_RIGHT_TRACTION_JOINT], joint_references_[FRONT_RIGHT_DIRECTION_JOINT]);
+			setJointPositionReferenceWithLessChange(q[1], a[1], joint_states_mean_[FRONT_LEFT_TRACTION_JOINT],  joint_references_[FRONT_LEFT_DIRECTION_JOINT]);
+			setJointPositionReferenceWithLessChange(q[2], a[2], joint_states_mean_[BACK_LEFT_TRACTION_JOINT],   joint_references_[BACK_LEFT_DIRECTION_JOINT]);
+			setJointPositionReferenceWithLessChange(q[3], a[3], joint_states_mean_[BACK_RIGHT_TRACTION_JOINT],  joint_references_[BACK_RIGHT_DIRECTION_JOINT]);
+
+			//constraint (1)
+			setJointPositionReferenceBetweenMotorWheelLimits(q[0], a[0], FRONT_RIGHT_DIRECTION_JOINT);
+			setJointPositionReferenceBetweenMotorWheelLimits(q[1], a[1], FRONT_LEFT_DIRECTION_JOINT);
+			setJointPositionReferenceBetweenMotorWheelLimits(q[2], a[2], BACK_LEFT_DIRECTION_JOINT);
+			setJointPositionReferenceBetweenMotorWheelLimits(q[3], a[3], BACK_RIGHT_DIRECTION_JOINT);
+			
+			// joint velocity references are scaled so each wheel does not exceed it's maximum velocity
+			setJointVelocityReferenceBetweenLimits(q);
+
+			}
+
+		if (active_kinematic_mode_ == MODE_SINGLE_ACKERMANN) {
+		
+			double x1 = L; double y1 = W/2.0;
+			double x2 = L; double y2 = W/2.0;
+			double y3 = W/2.0;
+			double y4 = W/2.0;
+							
+			double wx1 = fabs(vx) + w * y1;
+			double wy1 = w * x1;
+			//q[0] = - sign(wx1) * sqrt( wx1*wx1 + wy1*wy1 ); // m/s
+			q[0] = - sign(vx) * sqrt( wx1*wx1 + wy1*wy1 ); // m/s
+			q[0] = q[0] / (wheel_diameter_/2.0); // convert to rad/s
+			a[0] = radnorm( atan2( wy1,wx1 )); //			
+						
+			double wx2 = fabs(vx) - w * y2;
+			double wy2 = w * x2;
+			// q[1] = sign(wx2) * sqrt( wx2*wx2 + wy2*wy2 ); // m/s
+			q[1] = sign(vx) * sqrt( wx2*wx2 + wy2*wy2 ); // m/s
+			q[1] = q[1] / (wheel_diameter_/2.0); // convert to rad/s
+			a[1] = radnorm( atan2 (wy2,wx2)); // 
+						
+			double wx3 = vx - w * y3;
+			double wy3 = 0.0;
+			q[2] = sign(wx3)*sqrt( wx3*wx3 + wy3*wy3 ); // m/s
+			q[2] = q[2] / (wheel_diameter_/2.0); // convert to rad/s
+			a[2] = 0.0; 
+						
+			double wx4 = vx + w * y4;
+			double wy4 = 0.0;
+			q[3] = -sign(wx4)*sqrt( wx4*wx4 + wy4*wy4 ); // m/s
+			q[3] = q[3] / (wheel_diameter_/2.0); // convert to rad/s
+			a[3] = 0.0; 
+			}
 	 
-        //constraint (2)
-        setJointPositionReferenceWithLessChange(q[0], a[0], joint_states_mean_[FRONT_RIGHT_TRACTION_JOINT], joint_references_[FRONT_RIGHT_DIRECTION_JOINT]);
-        setJointPositionReferenceWithLessChange(q[1], a[1], joint_states_mean_[FRONT_LEFT_TRACTION_JOINT],  joint_references_[FRONT_LEFT_DIRECTION_JOINT]);
-        setJointPositionReferenceWithLessChange(q[2], a[2], joint_states_mean_[BACK_LEFT_TRACTION_JOINT],   joint_references_[BACK_LEFT_DIRECTION_JOINT]);
-        setJointPositionReferenceWithLessChange(q[3], a[3], joint_states_mean_[BACK_RIGHT_TRACTION_JOINT],  joint_references_[BACK_RIGHT_DIRECTION_JOINT]);
-
-        //constraint (1)
-        setJointPositionReferenceBetweenMotorWheelLimits(q[0], a[0], FRONT_RIGHT_DIRECTION_JOINT);
-        setJointPositionReferenceBetweenMotorWheelLimits(q[1], a[1], FRONT_LEFT_DIRECTION_JOINT);
-        setJointPositionReferenceBetweenMotorWheelLimits(q[2], a[2], BACK_LEFT_DIRECTION_JOINT);
-        setJointPositionReferenceBetweenMotorWheelLimits(q[3], a[3], BACK_RIGHT_DIRECTION_JOINT);
-
-        //ROS_INFO_THROTTLE(1,"q1234=(%5.2f, %5.2f, %5.2f, %5.2f)   a1234=(%5.2f, %5.2f, %5.2f, %5.2f)", q[0],q[1],q[2],q[3], a[0],a[1],a[2],a[3]);
-
-        // joint velocity references are scaled so each wheel does not exceed it's maximum velocity
-        setJointVelocityReferenceBetweenLimits(q);
+        // ROS_INFO_THROTTLE(1,"q1234=(%5.2f, %5.2f, %5.2f, %5.2f)   a1234=(%5.2f, %5.2f, %5.2f, %5.2f)", q[0],q[1],q[2],q[3], a[0],a[1],a[2],a[3]);
 
         // Motor control actions	  
         // Axis are not reversed in the omni (swerve) configuration
@@ -583,7 +632,6 @@ namespace omni_drive_controller
         joint_references_[BACK_RIGHT_DIRECTION_JOINT] = a[3];
         
     }
-
 
     void OmniDriveController::updateOdometryFromEncoder()
     {
@@ -664,6 +712,41 @@ namespace omni_drive_controller
 
         cmd_last_stamp_ = ros::Time::now();
     }
+
+    bool OmniDriveController::srvCallback_SetMode(robotnik_msgs::set_mode::Request& request, robotnik_msgs::set_mode::Response& response)
+	{
+		// Check if the selected mode is available or not
+		// 1 - OMNIDRIVE / SWERVE
+		// 2 - SINGLE ACKERMANN
+		// 3 - DUAL ACKERMANN (similar to omnidrive with different state machine)
+		// (4 - SKID-STEERING)
+	  ROS_DEBUG_STREAM_NAMED(controller_name_, "srvCallback_SetMode request.mode=" << request.mode);
+	  if ((request.mode >=1)&&(request.mode<=3)) {
+		active_kinematic_mode_ = request.mode;
+		ROS_INFO("Active Kinematic Mode =%d", active_kinematic_mode_);
+		return true;
+		}
+	  else return false;
+	}
+
+	// Service GetMode
+	bool OmniDriveController::srvCallback_GetMode(robotnik_msgs::get_mode::Request& request, robotnik_msgs::get_mode::Response& response)
+	{
+		response.mode = this->active_kinematic_mode_;			           						
+		return true;	
+	}	
+
+	// Service SetOdometry 
+	bool OmniDriveController::srvCallback_SetOdometry(robotnik_msgs::set_odometry::Request &request, robotnik_msgs::set_odometry::Response &response )
+	{
+		// ROS_INFO("s::set_odometry: request -> x = %f, y = %f, a = %f", req.x, req.y, req.orientation);
+		odom_.pose.pose.position.x = request.x;
+		odom_.pose.pose.position.y = request.y;		
+		//robot_pose_pa_ = req.orientation;
+
+		response.ret = true;
+		return true;
+	}
 
     void OmniDriveController::publishOdometry()
     {

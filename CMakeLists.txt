@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   tf
   urdf
+  robotnik_msgs
 )
 
 ## System dependencies are found with CMake's conventions
