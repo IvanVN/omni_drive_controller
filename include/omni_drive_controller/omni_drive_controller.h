@@ -142,6 +142,7 @@ namespace omni_drive_controller
     //
     void readJointStates();
     void writeJointCommands();
+    void limitCommand(double period, geometry_msgs::Twist received, geometry_mgs::Twist current);
     void limitCommand(double period);
     void updateJointStateHistoryMean();
     void updateJointReferences();

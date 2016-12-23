@@ -370,8 +370,8 @@ namespace omni_drive_controller
 
         // TODO: soft brake (slow slowing down) and hard brake (hard slowing down)
     }
-
-    void OmniDriveController::limitCommand(double period)
+    
+    void OmniDriveController::limitCommand(double period, geometry_msgs::Twist received, geometry_msgs::Twist current)
     {
         double vx, vy, w;
 
@@ -405,7 +405,46 @@ namespace omni_drive_controller
             w = sign(w) * angular_speed_limit_;
 
         current_cmd_.angular.z = w;
+    }
 
+    void OmniDriveController::limitCommand(double period)
+    {
+	current_cmd_ = received_cmd_;
+
+	return;
+
+        double vx, vy, w;
+
+        double accel_x = (received_cmd_.linear.x - current_cmd_.linear.x)/period;
+        double accel_y = (received_cmd_.linear.y - current_cmd_.linear.y)/period;
+
+        double total_accel = std::sqrt(accel_x*accel_x + accel_y*accel_y);
+        if (total_accel > linear_acceleration_limit_) {
+            accel_x = accel_x * linear_acceleration_limit_ / total_accel;
+            accel_y = accel_y * linear_acceleration_limit_ / total_accel;
+        }
+
+        vx = current_cmd_.linear.x + accel_x * period;
+        vy = current_cmd_.linear.y + accel_y * period;
+
+        double total_vel = std::sqrt(vx*vx + vy*vy);
+        if (total_vel > linear_speed_limit_) {
+            vx = vx * linear_speed_limit_ / total_vel;
+            vy = vy * linear_speed_limit_ / total_vel;
+        }
+
+        current_cmd_.linear.x = vx;
+        current_cmd_.linear.y = vy;
+
+        double accel_w = (received_cmd_.angular.z - current_cmd_.angular.z)/period;
+        if (std::abs(accel_w) > angular_acceleration_limit_)
+            accel_w = sign(accel_w) * angular_acceleration_limit_;
+
+        w = current_cmd_.angular.z + accel_w * period;
+        if (std::abs(w) > angular_speed_limit_)
+            w = sign(w) * angular_speed_limit_;
+
+        current_cmd_.angular.z = w;
     }
 
     void OmniDriveController::readJointStates()
@@ -453,7 +492,7 @@ namespace omni_drive_controller
         //double mw_orientation_range = std::sqrt(v_ref_x_*v_ref_x_ + v_ref_y_*v_ref_y_);
         double mw_orientation_range = std::sqrt(odom_.twist.twist.linear.x*odom_.twist.twist.linear.x + odom_.twist.twist.linear.y*odom_.twist.twist.linear.y);
 
-        double min_mw_orientation_range = 5e-2;
+        double min_mw_orientation_range = 0.4;
 
         if (mw_orientation_range < min_mw_orientation_range)
             mw_orientation_range = min_mw_orientation_range;
