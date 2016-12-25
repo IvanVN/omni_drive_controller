@@ -615,6 +615,16 @@ namespace omni_drive_controller
 			q[3] = -sign(wx4)*sqrt( wx4*wx4 + wy4*wy4 ); // m/s
 			q[3] = q[3] / (wheel_diameter_/2.0); // convert to rad/s
 			a[3] = 0.0; 
+
+			//constraint (1)
+			setJointPositionReferenceBetweenMotorWheelLimits(q[0], a[0], FRONT_RIGHT_DIRECTION_JOINT);
+			setJointPositionReferenceBetweenMotorWheelLimits(q[1], a[1], FRONT_LEFT_DIRECTION_JOINT);
+			setJointPositionReferenceBetweenMotorWheelLimits(q[2], a[2], BACK_LEFT_DIRECTION_JOINT);
+			setJointPositionReferenceBetweenMotorWheelLimits(q[3], a[3], BACK_RIGHT_DIRECTION_JOINT);
+			
+			// joint velocity references are scaled so each wheel does not exceed it's maximum velocity
+			setJointVelocityReferenceBetweenLimits(q);
+
 			}
 	 
         // ROS_INFO_THROTTLE(1,"q1234=(%5.2f, %5.2f, %5.2f, %5.2f)   a1234=(%5.2f, %5.2f, %5.2f, %5.2f)", q[0],q[1],q[2],q[3], a[0],a[1],a[2],a[3]);
