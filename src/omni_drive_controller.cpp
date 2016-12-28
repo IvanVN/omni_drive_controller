@@ -589,20 +589,30 @@ namespace omni_drive_controller
 			double x2 = L; double y2 = W/2.0;
 			double y3 = W/2.0;
 			double y4 = W/2.0;
-							
-			double wx1 = fabs(vx) + w * y1;
+		
+			double wx1 = fabs(vx) + w * y1;			
 			double wy1 = w * x1;
 			//q[0] = - sign(wx1) * sqrt( wx1*wx1 + wy1*wy1 ); // m/s
-			q[0] = - sign(vx) * sqrt( wx1*wx1 + wy1*wy1 ); // m/s
+			q[0] = - sign(vx) * sqrt( wx1*wx1 + wy1*wy1 ); // m/s						
 			q[0] = q[0] / (wheel_diameter_/2.0); // convert to rad/s
-			a[0] = radnorm( atan2( wy1,wx1 )); //			
-						
-			double wx2 = fabs(vx) - w * y2;
+		    						
+			double wx2 = fabs(vx) - w * y2;			
 			double wy2 = w * x2;
 			// q[1] = sign(wx2) * sqrt( wx2*wx2 + wy2*wy2 ); // m/s
-			q[1] = sign(vx) * sqrt( wx2*wx2 + wy2*wy2 ); // m/s
+			q[1] = sign(vx) * sqrt( wx2*wx2 + wy2*wy2 ); // m/s						
 			q[1] = q[1] / (wheel_diameter_/2.0); // convert to rad/s
-			a[1] = radnorm( atan2 (wy2,wx2)); // 
+
+			// Remove sign(vx) to use w as angle.
+			if (vx>=0)
+				a[0] = radnorm( atan2( wy1,wx1 )); //			
+			else
+				a[0] = -radnorm( atan2 ( wy2,wx2 )); // 
+
+			// Remove sign(vx) to use w as angle.
+			if (vx>=0)
+				a[1] = radnorm( atan2 ( wy2,wx2 )); // 
+			else 
+				a[1] = -radnorm( atan2 ( wy1,wx1 ));
 						
 			double wx3 = vx - w * y3;
 			double wy3 = 0.0;
@@ -617,13 +627,13 @@ namespace omni_drive_controller
 			a[3] = 0.0; 
 
 			//constraint (1)
-			setJointPositionReferenceBetweenMotorWheelLimits(q[0], a[0], FRONT_RIGHT_DIRECTION_JOINT);
-			setJointPositionReferenceBetweenMotorWheelLimits(q[1], a[1], FRONT_LEFT_DIRECTION_JOINT);
-			setJointPositionReferenceBetweenMotorWheelLimits(q[2], a[2], BACK_LEFT_DIRECTION_JOINT);
-			setJointPositionReferenceBetweenMotorWheelLimits(q[3], a[3], BACK_RIGHT_DIRECTION_JOINT);
+			//setJointPositionReferenceBetweenMotorWheelLimits(q[0], a[0], FRONT_RIGHT_DIRECTION_JOINT);
+			//setJointPositionReferenceBetweenMotorWheelLimits(q[1], a[1], FRONT_LEFT_DIRECTION_JOINT);
+			//setJointPositionReferenceBetweenMotorWheelLimits(q[2], a[2], BACK_LEFT_DIRECTION_JOINT);
+			//setJointPositionReferenceBetweenMotorWheelLimits(q[3], a[3], BACK_RIGHT_DIRECTION_JOINT);
 			
 			// joint velocity references are scaled so each wheel does not exceed it's maximum velocity
-			setJointVelocityReferenceBetweenLimits(q);
+			//setJointVelocityReferenceBetweenLimits(q);
 
 			}
 	 
