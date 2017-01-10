@@ -405,8 +405,20 @@ namespace omni_drive_controller
             vy = vy * linear_speed_limit_ / total_vel;
         }
 
-        current_cmd_.linear.x = vx;
-        current_cmd_.linear.y = vy;
+		// If desired speed is zero, does not apply deceleration
+		if(received_cmd_.linear.x == 0.0){
+			current_cmd_.linear.x = 0.0;
+		}else{
+			current_cmd_.linear.x = vx;
+		}
+		if(received_cmd_.linear.y == 0.0){
+			current_cmd_.linear.y = 0.0;
+		}else{
+			current_cmd_.linear.y = vy;
+		}
+			
+        
+        
 
         double accel_w = (received_cmd_.angular.z - current_cmd_.angular.z)/period;
         if (std::abs(accel_w) > angular_acceleration_limit_)
@@ -415,9 +427,12 @@ namespace omni_drive_controller
         w = current_cmd_.angular.z + accel_w * period;
         if (std::abs(w) > angular_speed_limit_)
             w = sign(w) * angular_speed_limit_;
-
-        current_cmd_.angular.z = w;
-
+		
+		if(received_cmd_.angular.z == 0.0){
+			current_cmd_.angular.z = 0.0;
+		}else{
+			current_cmd_.angular.z = w;
+		}
     }
 
     void OmniDriveController::readJointStates()
@@ -458,6 +473,9 @@ namespace omni_drive_controller
             for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
                 joints_[i].setCommand(joint_commands_[i]);
             }
+			current_cmd_.linear.x = 0.0;
+			current_cmd_.linear.y = 0.0;
+			current_cmd_.angular.z = 0.0;
             return;
         }
         // check motorwheel orientation
