@@ -4,6 +4,7 @@
 
 #include <ros/ros.h>
 #include <tf/transform_datatypes.h>
+
 #include <omni_drive_controller/omni_drive_controller.h>
 
 #define MODE_OMNIDRIVE				1
@@ -777,9 +778,13 @@ namespace omni_drive_controller
 	// Service SetOdometry 
 	bool OmniDriveController::srvCallback_SetOdometry(robotnik_msgs::set_odometry::Request &request, robotnik_msgs::set_odometry::Response &response )
 	{
-		// ROS_INFO("s::set_odometry: request -> x = %f, y = %f, a = %f", req.x, req.y, req.orientation);
-		odom_.pose.pose.position.x = request.x;
-		odom_.pose.pose.position.y = request.y;		
+		//ROS_INFO("OmniDriveController::srvCallback_SetOdometry: request -> x = %f, y = %f, a = %f", request.x, request.y, request.orientation);
+		pose_encoder_.x = odom_.pose.pose.position.x = request.x;
+		pose_encoder_.y = odom_.pose.pose.position.y = request.y;		
+		//tf::Quaternion q;
+		//q.setEuler(request.orientation, 0.0, 0.0);
+		odom_.pose.pose.orientation = tf::createQuaternionMsgFromYaw(request.orientation);	
+		pose_encoder_.theta = request.orientation;
 		//robot_pose_pa_ = req.orientation;
 
 		response.ret = true;
