@@ -21,7 +21,15 @@
 
 namespace omni_drive_controller
 {
-    
+    namespace ControllerStates {
+        enum ControllerState {
+            Init,
+            Moving,
+            Braking,
+        }; 
+    }
+    typedef ControllerStates::ControllerState ControllerState;
+
     enum {
         FRONT_RIGHT_TRACTION_JOINT=0,
         FRONT_LEFT_TRACTION_JOINT=1,
@@ -111,6 +119,7 @@ namespace omni_drive_controller
     // Data
     geometry_msgs::Twist received_cmd_; // holds last velocity command
     geometry_msgs::Twist current_cmd_;  // hold current used command (limited). it is updated on the limitCommand function and in the writeJointCommands, because if the direction wheels are not in position, the traction reference is 0 
+    geometry_msgs::Twist last_valid_cmd_;  // hold current used command (limited). it is updated on the limitCommand function and in the writeJointCommands, because if the direction wheels are not in position, the traction reference is 0 
     ros::Time cmd_last_stamp_; // holds last velocity command time stamp, used to check the watchdog
     nav_msgs::Odometry odom_; // holds odometry
     geometry_msgs::Pose2D pose_encoder_; // holds position calculated from encoders
@@ -136,6 +145,14 @@ namespace omni_drive_controller
 
 	int active_kinematic_mode_;
 
+    bool wheels_on_position_;
+    bool wait_for_reconfiguration_;
+    bool do_not_write_commands_;
+    bool robot_is_stopped_;
+
+    ros::Publisher current_cmd_pub_;
+    ros::Publisher commands_pub_;
+
     // ROS stuff
     std::string controller_name_; // node name, 
     std::string command_topic_; // topic from where velocity commands are read 
@@ -155,7 +172,7 @@ namespace omni_drive_controller
     //
     void readJointStates();
     void writeJointCommands();
-    void limitCommand(double period);
+    void limitCommand(double period, geometry_msgs::Twist goal_cmd);
     void updateJointStateHistoryMean();
     void updateJointReferences();
     void setJointPositionReferenceWithLessChange(double &wheel_speed, double &wheel_angle, double current_wheel_speed, double current_wheel_angle);
@@ -166,6 +183,18 @@ namespace omni_drive_controller
     bool initController(ros::NodeHandle root_nh, ros::NodeHandle controller_nh);
     void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& cmd_msg);
     
+    bool checkJointPositionReferenceIsBetweenMotorWheelLimits(double wheel_angle, double range, int joint_number);
+    void setJointConfigurationAsMirror(double &wheel_speed, double &wheel_angle);
+
+    void hardRobotBrake();
+    void softRobotBrake(double period);
+    bool areDirectionWheelsOriented(double max_range);
+    bool areTractionWheelsOnSameDirection(double max_range);
+    void orientWheels();
+    void setJointCommandsAsReferences();
+
+    ControllerState controller_state_;
+
 	bool srvCallback_SetMode(robotnik_msgs::set_mode::Request& request, robotnik_msgs::set_mode::Response& response);
 	bool srvCallback_GetMode(robotnik_msgs::get_mode::Request& request, robotnik_msgs::get_mode::Response& response);
 	bool srvCallback_SetOdometry(robotnik_msgs::set_odometry::Request &request, robotnik_msgs::set_odometry::Response &response );

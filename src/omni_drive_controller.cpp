@@ -342,6 +342,8 @@ namespace omni_drive_controller
         pose_encoder_ = geometry_msgs::Pose2D();
 
         cmd_watchdog_timedout_ = true;
+        controller_state_ = ControllerState::Init;
+        robot_is_stopped_ = true;
     }
 
     /**
@@ -355,8 +357,6 @@ namespace omni_drive_controller
 
     void OmniDriveController::update(const ros::Time& time, const ros::Duration& period)
     {
-
-        limitCommand(period.toSec());
         // read joint states: 
         //  - convert wheel angular velocity to linear velocity
         //  - normalize motor wheel angular position between [-pi, pi] (only needed for simulation)
@@ -368,28 +368,150 @@ namespace omni_drive_controller
         //  - from joint values (closed loop)
         //  - from command (open loop)
         updateOdometryFromEncoder();
-
-        // calculate joint velocity and position references, taking into account some constrains
-        updateJointReferences();
-
-        // TODO: rate of odom publishing
+        
         if ((time - odom_last_sent_) > odom_publish_period_) {
             odom_last_sent_ = time;
             publishOdometry();
         }
-
+        
         cmd_watchdog_timedout_ = ((time - cmd_last_stamp_) > cmd_watchdog_duration_);
-        writeJointCommands();
 
-        // TODO: soft brake (slow slowing down) and hard brake (hard slowing down)
+        if (cmd_watchdog_timedout_) {
+            current_cmd_ = geometry_msgs::Twist(); // to set to 0
+            hardRobotBrake();
+            controller_state_ = ControllerState::Braking;
+            //if (timeouts == 1)
+                //ROS_INFO( "WATCH (to init) %d", iter);
+            return;
+        }
+
+        if (received_cmd_.linear.x == 0 and received_cmd_.linear.y == 0 and received_cmd_.angular.z == 0) {
+            controller_state_ = ControllerState::Braking;
+        }
+
+        switch (controller_state_)
+        {
+            case ControllerState::Init:
+            {
+                //current_cmd_ = geometry_msgs::Twist();
+                //limitCommand(period.toSec(), received_cmd_);
+                current_cmd_ = received_cmd_;
+
+                // calculate joint velocity and position references, taking into account some constrains
+                updateJointReferences();
+                for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) {
+                    joint_commands_[i] = joint_references_[i];
+                    joints_[i].setCommand(joint_commands_[i]);
+                }
+                double range = 0.05;
+                if (areDirectionWheelsOriented(range) == true){
+                    controller_state_ = ControllerState::Moving;
+                    //ROS_INFO("SWITCH TO MOV %d", iter);
+                    current_cmd_ = geometry_msgs::Twist(); // to set to 0
+                    break;
+                }
+                //orientWheels();
+                //writeJointCommands();
+
+            break;
+            }
+            case ControllerState::Moving:
+            {    
+                limitCommand(period.toSec(), received_cmd_);
+
+                // calculate joint velocity and position references, taking into account some constrains
+                updateJointReferences();
+
+                double range2 = 1;
+                if ((areDirectionWheelsOriented(range2) == false /*or areTractionWheelsOnSameDirection(3) == false*/) and 
+                        std::abs(odom_.twist.twist.linear.x) > 0.05 and
+                        std::abs(odom_.twist.twist.linear.y) > 0.05)
+                {
+                    controller_state_ = ControllerState::Braking;
+                    //ROS_INFO("SWITCH TO BRAK %d", iter);
+                    break;
+                }
+                setJointCommandsAsReferences();
+                writeJointCommands();
+            break;
+            }
+            case ControllerState::Braking:
+            {
+                softRobotBrake(period.toSec());
+                
+                if (robot_is_stopped_) {
+                    controller_state_ = ControllerState::Init;
+                    current_cmd_ = geometry_msgs::Twist(); // to set to 0
+                    //ROS_INFO("SWITCH TO INIT %d", iter);
+                }
+            break;
+            }
+        }
     }
 
-    void OmniDriveController::limitCommand(double period)
+    bool OmniDriveController::areDirectionWheelsOriented(double max_range)
+    {
+        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) {
+            if (std::abs(joint_commands_[i] - joint_states_[i]) > max_range)
+                return false;
+        }
+        return true;
+    }
+    bool OmniDriveController::areTractionWheelsOnSameDirection(double max_range)
+    {
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
+            if (std::abs(joint_commands_[i] - joint_states_[i]) > max_range and sign(joint_commands_[i]) != sign(joint_states_[i]))
+                return false;
+        }
+        return true;
+    }
+    
+    void OmniDriveController::hardRobotBrake() {
+        // set references to 0
+        for (size_t i = 0; i < NUMBER_OF_JOINTS; i++) {
+            joint_commands_[i] = joint_references_[i] = 0;
+        }
+        //but only send speed commands
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
+            joints_[i].setCommand(joint_commands_[i]);
+        }
+        return;
+    }
+    
+    void OmniDriveController::softRobotBrake(double period)
+    {
+        //keep direction references, but slowly stop traction
+        double max_acceleration = 40; // rad/s^2
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
+            double v = joint_states_[i]*2/wheel_diameter_;
+            //double v = joint_commands_[i];
+            double accel = -v/period;
+            if (std::abs(accel) > max_acceleration)
+                accel = sign(accel) * max_acceleration;
+            v = v + accel*period;
+            joint_commands_[i] = v;
+            joints_[i].setCommand(joint_commands_[i]);
+        }
+        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) {
+         //   joint_commands_[i] = joint_states_[i];
+        }
+    }
+
+    void OmniDriveController::orientWheels() {
+        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
+            joint_commands_[i] = 0;
+        } 
+        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) {
+            joint_commands_[i] = joint_references_[i];
+        }
+    }
+
+    void OmniDriveController::limitCommand(double period, geometry_msgs::Twist goal_cmd)
     {
         double vx, vy, w;
 
-        double accel_x = (received_cmd_.linear.x - current_cmd_.linear.x)/period;
-        double accel_y = (received_cmd_.linear.y - current_cmd_.linear.y)/period;
+        double accel_x = (goal_cmd.linear.x - current_cmd_.linear.x)/period;
+        double accel_y = (goal_cmd.linear.y - current_cmd_.linear.y)/period;
 
         double total_accel = std::sqrt(accel_x*accel_x + accel_y*accel_y);
         if (total_accel > linear_acceleration_limit_) {
@@ -406,34 +528,19 @@ namespace omni_drive_controller
             vy = vy * linear_speed_limit_ / total_vel;
         }
 
-		// If desired speed is zero, does not apply deceleration
-		if(received_cmd_.linear.x == 0.0){
-			current_cmd_.linear.x = 0.0;
-		}else{
-			current_cmd_.linear.x = vx;
-		}
-		if(received_cmd_.linear.y == 0.0){
-			current_cmd_.linear.y = 0.0;
-		}else{
-			current_cmd_.linear.y = vy;
-		}
-			
-        
-        
+        current_cmd_.linear.x = vx;
+        current_cmd_.linear.y = vy;
 
-        double accel_w = (received_cmd_.angular.z - current_cmd_.angular.z)/period;
+        double accel_w = (goal_cmd.angular.z - current_cmd_.angular.z)/period;
         if (std::abs(accel_w) > angular_acceleration_limit_)
             accel_w = sign(accel_w) * angular_acceleration_limit_;
 
         w = current_cmd_.angular.z + accel_w * period;
         if (std::abs(w) > angular_speed_limit_)
             w = sign(w) * angular_speed_limit_;
-		
-		if(received_cmd_.angular.z == 0.0){
-			current_cmd_.angular.z = 0.0;
-		}else{
-			current_cmd_.angular.z = w;
-		}
+
+        current_cmd_.angular.z = w;
+
     }
 
     void OmniDriveController::readJointStates()
@@ -454,75 +561,19 @@ namespace omni_drive_controller
             joint_states_mean_[i] = sum / joint_states_history_[i].size();
         }
     }
-        
+    
+    void OmniDriveController::setJointCommandsAsReferences()
+    {
+        for (size_t i = 0; i < NUMBER_OF_JOINTS; i++) {
+            joint_commands_[i] = joint_references_[i];
+        }
+    }
+
     void OmniDriveController::writeJointCommands()
     {
-        // set joint_commands_ to the values that must be sent to the actuators.
-        // joint_commands_[i] can be, sorted by priority (from more to less):
-        //   (1) if watchdog has timedout, vel = 0, pos is not sent
-        //   (2) if motorowheels are not in position, vel = 0, pos is sent
-        //   (3) default: vel and pos are sent
-
-
-        if (cmd_watchdog_timedout_) {
-            //  TODO: send 0 velocity always, or just the first time
-            // set all commands to 0
-            for (size_t i = 0; i < NUMBER_OF_JOINTS; i++) {
-                joint_commands_[i] = joint_references_[i] = 0;
-            }
-            //but only send speed commands
-            for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
-                joints_[i].setCommand(joint_commands_[i]);
-            }
-			current_cmd_.linear.x = 0.0;
-			current_cmd_.linear.y = 0.0;
-			current_cmd_.angular.z = 0.0;
-            return;
-        }
-        // check motorwheel orientation
-        //double mw_orientation_range = 1e-1;
-        //double mw_orientation_range = std::sqrt(v_ref_x_*v_ref_x_ + v_ref_y_*v_ref_y_);
-        double mw_orientation_range = std::sqrt(odom_.twist.twist.linear.x*odom_.twist.twist.linear.x + odom_.twist.twist.linear.y*odom_.twist.twist.linear.y);
-
-        double min_mw_orientation_range = 5e-2;
-
-        if (mw_orientation_range < min_mw_orientation_range)
-            mw_orientation_range = min_mw_orientation_range;
-
-        bool motorwheels_on_position = true;
-        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++)
-            motorwheels_on_position &= (std::abs(joint_references_[i] - joint_states_[i]) < mw_orientation_range);
-
-        // if motorwheels are in position, set velocity commands as reference
-			if (motorwheels_on_position) {
-				for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) 
-					joint_commands_[i] = joint_references_[i];
-				} 
-			else {// if not, set to 0, and updated the current cmd!
-				if (active_kinematic_mode_== MODE_OMNIDRIVE) {
-					for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++)
-						joint_commands_[i] = 0;
-					current_cmd_.linear.x = 0;
-					current_cmd_.linear.y = 0;
-					current_cmd_.angular.z = 0;
-					}
-				}
-
-        // always set position command if watchdog hasn't timed out
-        for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++) 
-            joint_commands_[i] = joint_references_[i];
-
-        // send commands to actuators
-        for (size_t i = 0; i < NUMBER_OF_JOINTS; i++)
+        for (size_t i = 0; i < NUMBER_OF_JOINTS; i++) {
             joints_[i].setCommand(joint_commands_[i]);
-
-        std::ostringstream oss;
-        oss << "commands:";
-        for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++) {
-            oss << " wheel " << i << " : " << joint_commands_[i];
         }
-        
-        //ROS_INFO_STREAM_THROTTLE(1, oss.str());
     }
 
     void OmniDriveController::updateJointReferences()
@@ -742,6 +793,13 @@ namespace omni_drive_controller
         odom_.twist.twist.linear.x = vx;
         odom_.twist.twist.linear.y = vy;    
         odom_.twist.twist.angular.z = w;
+        
+        if ( std::abs(odom_.twist.twist.linear.x) < 0.01 and
+             std::abs(odom_.twist.twist.linear.y) < 0.01 and 
+             std::abs(odom_.twist.twist.angular.z) < 0.01)
+                robot_is_stopped_ = true;
+        else
+            robot_is_stopped_ = false;
     }
 
     void OmniDriveController::cmdVelCallback(const geometry_msgs::Twist::ConstPtr& cmd_msg)
