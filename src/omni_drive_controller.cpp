@@ -258,14 +258,14 @@ bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandl
 
   // for now, the controller is for a robot with four wheel, and the joint names are these and only these
   joint_names_.resize(NUMBER_OF_JOINTS);
-  joint_names_[FRONT_RIGHT_TRACTION_JOINT] = "front_right_wheel_joint";
-  joint_names_[FRONT_LEFT_TRACTION_JOINT] = "front_left_wheel_joint";
-  joint_names_[BACK_RIGHT_TRACTION_JOINT] = "back_right_wheel_joint";
-  joint_names_[BACK_LEFT_TRACTION_JOINT] = "back_left_wheel_joint";
-  joint_names_[FRONT_RIGHT_DIRECTION_JOINT] = "front_right_motor_wheel_joint";
-  joint_names_[FRONT_LEFT_DIRECTION_JOINT] = "front_left_motor_wheel_joint";
-  joint_names_[BACK_RIGHT_DIRECTION_JOINT] = "back_right_motor_wheel_joint";
-  joint_names_[BACK_LEFT_DIRECTION_JOINT] = "back_left_motor_wheel_joint";
+  joint_names_[FRONT_RIGHT_TRACTION_JOINT] = "rbsherpa_hl_a_front_right_wheel_joint";
+  joint_names_[FRONT_LEFT_TRACTION_JOINT] = "rbsherpa_hl_a_front_left_wheel_joint";
+  joint_names_[BACK_RIGHT_TRACTION_JOINT] = "rbsherpa_hl_a_back_right_wheel_joint";
+  joint_names_[BACK_LEFT_TRACTION_JOINT] = "rbsherpa_hl_a_back_left_wheel_joint";
+  joint_names_[FRONT_RIGHT_DIRECTION_JOINT] = "rbsherpa_hl_a_front_right_motor_wheel_joint";
+  joint_names_[FRONT_LEFT_DIRECTION_JOINT] = "rbsherpa_hl_a_front_left_motor_wheel_joint";
+  joint_names_[BACK_RIGHT_DIRECTION_JOINT] = "rbsherpa_hl_a_back_right_motor_wheel_joint";
+  joint_names_[BACK_LEFT_DIRECTION_JOINT] = "rbsherpa_hl_a_back_left_motor_wheel_joint";
 
   joint_limits_.resize(NUMBER_OF_JOINTS);
 
