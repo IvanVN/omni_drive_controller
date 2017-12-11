@@ -1,6 +1,6 @@
 #include <boost/circular_buffer.hpp>
 
-#include <controller_interface/controller.h>
+#include <controller_interface/multi_interface_controller.h>
 #include <controller_interface/controller_base.h>
 #include <hardware_interface/joint_command_interface.h>
 #include <pluginlib/class_list_macros.h>
@@ -45,7 +45,9 @@ enum
   NUMBER_OF_WHEELS = 4
 };
 
-class OmniDriveController : public controller_interface::ControllerBase
+class OmniDriveController
+    : public controller_interface::MultiInterfaceController<hardware_interface::VelocityJointInterface,
+                                                            hardware_interface::PositionJointInterface>
 
 /* The standard way on indigo is to inherit from controller_interface::Controller<T>,
 where T is a JointInterface. So a controller can access to only one type of JointInterface
@@ -64,10 +66,7 @@ public:
 
   /**
   */
-  virtual bool initRequest(hardware_interface::RobotHW* const robot_hw, ros::NodeHandle& root_nh,
-                           ros::NodeHandle& controller_nh,
-                           ClaimedResources& claimed_resources); /* This line changed. Originally it was :
-                                                                    "std::set<std::string> &claimed_resources);" */
+  bool init(hardware_interface::RobotHW* const robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh);
 
   bool initVelocityInterface(hardware_interface::VelocityJointInterface* hw, ros::NodeHandle& root_nh,
                              ros::NodeHandle& controller_nh);

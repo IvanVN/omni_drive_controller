@@ -63,17 +63,9 @@ OmniDriveController::OmniDriveController()
   // TODO: initialize all variables
 }
 
-bool OmniDriveController::initRequest(hardware_interface::RobotHW* const robot_hw, ros::NodeHandle& root_nh,
-                                      ros::NodeHandle& controller_nh,
-                                      ClaimedResources& claimed_resources) /*  Changes here too like in the .h file */
+bool OmniDriveController::init(hardware_interface::RobotHW* const robot_hw, ros::NodeHandle& root_nh,
+                               ros::NodeHandle& controller_nh)
 {
-  // check if construction finished cleanly
-  if (state_ != CONSTRUCTED)
-  {
-    ROS_ERROR_STREAM_NAMED(controller_name_, "Cannot initialize this controller because it failed to be constructed");
-    return false;
-  }
-
   if (!initController(root_nh, controller_nh))
   {
     ROS_ERROR_STREAM_NAMED(controller_name_, "Cannot initialize this controller because it failed to initialize");
@@ -87,8 +79,6 @@ bool OmniDriveController::initRequest(hardware_interface::RobotHW* const robot_h
     ROS_ERROR_STREAM_NAMED(controller_name_, "This controller requires a hardware interface of type "
                                              "'hardware_interface::VelocityJointInterface'."
                                              " Make sure this is registered in the hardware_interface::RobotHW class.");
-    hardware_interface::internal::demangledTypeName<hardware_interface::PositionJointInterface>().c_str();  // I added
-                                                                                                            // this line
     return false;
   }
 
@@ -98,14 +88,8 @@ bool OmniDriveController::initRequest(hardware_interface::RobotHW* const robot_h
     ROS_ERROR_STREAM_NAMED(controller_name_, "This controller requires a hardware interface of type "
                                              "'hardware_interface::PositionJointInterface'."
                                              " Make sure this is registered in the hardware_interface::RobotHW class.");
-    hardware_interface::internal::demangledTypeName<hardware_interface::PositionJointInterface>().c_str();  // I added
-                                                                                                            // that line
     return false;
   }
-
-  // return which resources are claimed by this controller
-  vel_hw->clearClaims();
-  pos_hw->clearClaims();
 
   if (!initVelocityInterface(vel_hw, root_nh, controller_nh) || !initPositionInterface(pos_hw, root_nh, controller_nh))
   {
@@ -113,41 +97,6 @@ bool OmniDriveController::initRequest(hardware_interface::RobotHW* const robot_h
     return false;
   }
 
-  claimed_resources.clear();
-
-  // The main changes are here
-
-  hardware_interface::InterfaceResources vel_claims(
-      hardware_interface::internal::demangledTypeName<hardware_interface::VelocityJointInterface>(),
-      vel_hw->getClaims());
-
-  hardware_interface::InterfaceResources pos_claims(
-      hardware_interface::internal::demangledTypeName<hardware_interface::PositionJointInterface>(),
-      pos_hw->getClaims());
-
-  claimed_resources.push_back(vel_claims);
-  claimed_resources.push_back(pos_claims);
-
-  vel_hw->clearClaims();
-  pos_hw->clearClaims();
-
-  /*
-
-  Originally it was that
-
-          std::set<std::string>  vel_claims = vel_hw->getClaims();
-          std::set<std::string> pos_claims = pos_hw->getClaims();
-
-          claimed_resources.insert(vel_claims.begin(), vel_claims.end());
-         claimed_resources.insert(pos_claims.begin(), pos_claims.end());
-
-          vel_hw->clearClaims();
-          pos_hw->clearClaims();
-
-   */
-
-  // success
-  state_ = INITIALIZED;
   return true;
 }
 
