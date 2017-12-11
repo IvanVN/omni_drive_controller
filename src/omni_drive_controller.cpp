@@ -57,9 +57,9 @@ namespace omni_drive_controller
         // TODO: initialize all variables
     }
 
-    bool OmniDriveController::initRequest(hardware_interface::RobotHW* robot_hw,
+     bool OmniDriveController::initRequest(hardware_interface::RobotHW *const robot_hw,
             ros::NodeHandle& root_nh, ros::NodeHandle &controller_nh,
-            std::set<std::string> &claimed_resources)
+             ClaimedResources &claimed_resources)  /*  Changes here too like in the .h file */
     {
 
         // check if construction finished cleanly
@@ -80,6 +80,7 @@ namespace omni_drive_controller
         {
             ROS_ERROR_STREAM_NAMED(controller_name_, "This controller requires a hardware interface of type 'hardware_interface::VelocityJointInterface'."
                     " Make sure this is registered in the hardware_interface::RobotHW class.");
+	hardware_interface::internal::demangledTypeName<hardware_interface::PositionJointInterface>().c_str(); //I added this line
             return false;
         }
 
@@ -88,6 +89,7 @@ namespace omni_drive_controller
         {
             ROS_ERROR_STREAM_NAMED(controller_name_, "This controller requires a hardware interface of type 'hardware_interface::PositionJointInterface'."
                     " Make sure this is registered in the hardware_interface::RobotHW class.");
+	hardware_interface::internal::demangledTypeName<hardware_interface::PositionJointInterface>().c_str();  //I added that line
             return false;
         }
 
@@ -100,21 +102,45 @@ namespace omni_drive_controller
             ROS_ERROR_STREAM_NAMED(controller_name_, "Failed to initialize the controller");
             return false;
         }
+
         claimed_resources.clear();
 
-        std::set<std::string> vel_claims = vel_hw->getClaims();
+
+	//The main changes are here
+
+
+        hardware_interface::InterfaceResources vel_claims(hardware_interface::internal::demangledTypeName<hardware_interface::VelocityJointInterface>(), vel_hw->getClaims());
+
+        hardware_interface::InterfaceResources pos_claims(hardware_interface::internal::demangledTypeName<hardware_interface::PositionJointInterface>(), pos_hw->getClaims());
+      
+        claimed_resources.push_back(vel_claims);
+        claimed_resources.push_back(pos_claims);
+	
+	vel_hw->clearClaims();
+	pos_hw->clearClaims();
+	
+/*
+
+Originally it was that 
+
+        std::set<std::string>  vel_claims = vel_hw->getClaims();
         std::set<std::string> pos_claims = pos_hw->getClaims();
 
         claimed_resources.insert(vel_claims.begin(), vel_claims.end());
-        claimed_resources.insert(pos_claims.begin(), pos_claims.end());
+       claimed_resources.insert(pos_claims.begin(), pos_claims.end());
 
         vel_hw->clearClaims();
-        pos_hw->clearClaims();
+        pos_hw->clearClaims(); 
+
+ */
+
 
         // success
         state_ = INITIALIZED;
         return true;
     } 
+
+
     bool OmniDriveController::initVelocityInterface(hardware_interface::VelocityJointInterface* hw,
             ros::NodeHandle& root_nh,
             ros::NodeHandle &controller_nh)
@@ -143,7 +169,9 @@ namespace omni_drive_controller
     {
         bool everything_ok = true;
 
+
         controller_name_ = "omni_drive_controller";
+
 
         // the topics are hardcoded, the way to change them is by using the remap option
         command_topic_ = "cmd_vel";

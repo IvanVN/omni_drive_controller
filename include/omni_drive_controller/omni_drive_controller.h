@@ -45,6 +45,7 @@ namespace omni_drive_controller
 
     class OmniDriveController : 
     public controller_interface::ControllerBase
+  
     
     /* The standard way on indigo is to inherit from controller_interface::Controller<T>,
     where T is a JointInterface. So a controller can access to only one type of JointInterface
@@ -62,9 +63,9 @@ namespace omni_drive_controller
     
     /**
     */ 
-    bool initRequest(hardware_interface::RobotHW* robot_hw,
+    virtual bool initRequest(hardware_interface::RobotHW *const robot_hw,
             ros::NodeHandle& root_nh, ros::NodeHandle &controller_nh,
-            std::set<std::string> &claimed_resources);
+            ClaimedResources &claimed_resources); /* This line changed. Originally it was : "std::set<std::string> &claimed_resources);" */
     
     bool initVelocityInterface(hardware_interface::VelocityJointInterface* hw,
             ros::NodeHandle& root_nh,
@@ -80,19 +81,19 @@ namespace omni_drive_controller
      * \param time   Current time
      * \param period Time since the last called to update
      */
-    void update(const ros::Time& time, const ros::Duration& period);
+    virtual void update(const ros::Time& time, const ros::Duration& period);
 
     /**
      * \brief Starts controller
      * \param time Current time
      */
-    void starting(const ros::Time& time);
+    virtual void starting(const ros::Time& time);
 
     /**
      * \brief Stops controller
      * \param time Current time
      */
-    void stopping(const ros::Time& /*time*/);
+    virtual void stopping(const ros::Time& /*time*/);
     
     virtual std::string getHardwareInterfaceType() const;
 
