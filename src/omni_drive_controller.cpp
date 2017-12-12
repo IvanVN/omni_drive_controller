@@ -129,14 +129,14 @@ bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandl
   controller_name_ = "omni_drive_controller";
 
   // the topics are hardcoded, the way to change them is by using the remap option
-  command_topic_ = "cmd_vel";
+  command_topic_ = "rbsherpa_hl_control/cmd_vel";
   odom_topic_ = "odom";
 
   // default values for some variables that can change using the param server
   // related to kinematics
-  wheel_base_ = 0.934;
+  wheel_base_ = 1.42;
   track_width_ = 0.57;
-  wheel_diameter_ = 0.186;
+  wheel_diameter_ = 0.3684;
 
   linear_speed_limit_ = 0.1;
   linear_acceleration_limit_ = 0.1;
@@ -258,14 +258,14 @@ bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandl
 
   // for now, the controller is for a robot with four wheel, and the joint names are these and only these
   joint_names_.resize(NUMBER_OF_JOINTS);
-  joint_names_[FRONT_RIGHT_TRACTION_JOINT] = "rbsherpa_hl_a_front_right_wheel_joint";
-  joint_names_[FRONT_LEFT_TRACTION_JOINT] = "rbsherpa_hl_a_front_left_wheel_joint";
-  joint_names_[BACK_RIGHT_TRACTION_JOINT] = "rbsherpa_hl_a_back_right_wheel_joint";
-  joint_names_[BACK_LEFT_TRACTION_JOINT] = "rbsherpa_hl_a_back_left_wheel_joint";
-  joint_names_[FRONT_RIGHT_DIRECTION_JOINT] = "rbsherpa_hl_a_front_right_motor_wheel_joint";
-  joint_names_[FRONT_LEFT_DIRECTION_JOINT] = "rbsherpa_hl_a_front_left_motor_wheel_joint";
-  joint_names_[BACK_RIGHT_DIRECTION_JOINT] = "rbsherpa_hl_a_back_right_motor_wheel_joint";
-  joint_names_[BACK_LEFT_DIRECTION_JOINT] = "rbsherpa_hl_a_back_left_motor_wheel_joint";
+  joint_names_[FRONT_RIGHT_TRACTION_JOINT] = "rbsherpa_hl_a_front_right_motor_wheel_joint";
+  joint_names_[FRONT_LEFT_TRACTION_JOINT] = "rbsherpa_hl_a_front_left_motor_wheel_joint";
+  joint_names_[BACK_RIGHT_TRACTION_JOINT] = "rbsherpa_hl_a_back_right_motor_wheel_joint";
+  joint_names_[BACK_LEFT_TRACTION_JOINT] = "rbsherpa_hl_a_back_left_motor_wheel_joint";
+  joint_names_[FRONT_RIGHT_DIRECTION_JOINT] = "rbsherpa_hl_a_front_right_steer_wheel_joint";
+  joint_names_[FRONT_LEFT_DIRECTION_JOINT] = "rbsherpa_hl_a_front_left_steer_wheel_joint";
+  joint_names_[BACK_RIGHT_DIRECTION_JOINT] = "rbsherpa_hl_a_back_right_steer_wheel_joint";
+  joint_names_[BACK_LEFT_DIRECTION_JOINT] = "rbsherpa_hl_a_back_left_steer_wheel_joint";
 
   joint_limits_.resize(NUMBER_OF_JOINTS);
 
@@ -425,11 +425,12 @@ void OmniDriveController::update(const ros::Time& time, const ros::Duration& per
 
       // calculate joint velocity and position references, taking into account some constrains
       updateJointReferences();
-      for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++)
-      {
-        joint_commands_[i] = joint_references_[i];
-        joints_[i].setCommand(joint_commands_[i]);
-      }
+      //for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++)
+      //{
+        //joint_commands_[i] = joint_references_[i];
+        //joints_[i].setCommand(joint_commands_[i]);
+      //}
+      writeJointCommands();
       double range = 0.05;
       if (areDirectionWheelsOriented(range) == true)
       {
@@ -618,6 +619,7 @@ void OmniDriveController::writeJointCommands()
   for (size_t i = 0; i < NUMBER_OF_JOINTS; i++)
   {
     joints_[i].setCommand(joint_commands_[i]);
+    //ROS_INFO_STREAM(i << " " <<joint_commands_[i]);
   }
 }
 
@@ -831,6 +833,9 @@ void OmniDriveController::updateOdometryFromEncoder()
 void OmniDriveController::cmdVelCallback(const geometry_msgs::Twist::ConstPtr& cmd_msg)
 {
   ROS_DEBUG_STREAM_NAMED(controller_name_, "Received command: (" << cmd_msg->linear.x << ")"
+                                                                 << ", " << cmd_msg->linear.y << ", "
+                                                                 << cmd_msg->angular.z << ")");
+  ROS_DEBUG_STREAM_NAMED(controller_name_,"Received command: (" << cmd_msg->linear.x << ")"
                                                                  << ", " << cmd_msg->linear.y << ", "
                                                                  << cmd_msg->angular.z << ")");
   received_cmd_ = *cmd_msg;
