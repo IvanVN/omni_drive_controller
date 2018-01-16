@@ -98,6 +98,7 @@ public:
 private:
   // Control stuff
   std::vector<hardware_interface::JointHandle> joints_;  // joint handles: to read current state and send commands
+  std::vector<std::string> wheel_names_;                 // wheel names: to read parameters of each wheel
   std::vector<std::string> joint_names_;                 // joint names: to get the handle of each joint
 
   std::vector<std::pair<double, double> > joint_limits_;  // lower, upper limits

@@ -126,17 +126,16 @@ bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandl
 {
   bool everything_ok = true;
 
-  controller_name_ = "omni_drive_controller";
-
+  controller_name_ = controller_nh.getNamespace();
   // the topics are hardcoded, the way to change them is by using the remap option
   command_topic_ = "cmd_vel";
   odom_topic_ = "odom";
 
   // default values for some variables that can change using the param server
   // related to kinematics
-  wheel_base_ = 0.934;
-  track_width_ = 0.57;
-  wheel_diameter_ = 0.186;
+  wheel_base_ = 1.5;
+  track_width_ = 0.5;
+  wheel_diameter_ = 0.2;
 
   linear_speed_limit_ = 0.1;
   linear_acceleration_limit_ = 0.1;
@@ -256,17 +255,6 @@ bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandl
   joint_references_.resize(NUMBER_OF_JOINTS);
   joint_commands_.resize(NUMBER_OF_JOINTS);
 
-  // for now, the controller is for a robot with four wheel, and the joint names are these and only these
-  joint_names_.resize(NUMBER_OF_JOINTS);
-  joint_names_[FRONT_RIGHT_TRACTION_JOINT] = "front_right_wheel_joint";
-  joint_names_[FRONT_LEFT_TRACTION_JOINT] = "front_left_wheel_joint";
-  joint_names_[BACK_RIGHT_TRACTION_JOINT] = "back_right_wheel_joint";
-  joint_names_[BACK_LEFT_TRACTION_JOINT] = "back_left_wheel_joint";
-  joint_names_[FRONT_RIGHT_DIRECTION_JOINT] = "front_right_motor_wheel_joint";
-  joint_names_[FRONT_LEFT_DIRECTION_JOINT] = "front_left_motor_wheel_joint";
-  joint_names_[BACK_RIGHT_DIRECTION_JOINT] = "back_right_motor_wheel_joint";
-  joint_names_[BACK_LEFT_DIRECTION_JOINT] = "back_left_motor_wheel_joint";
-
   joint_limits_.resize(NUMBER_OF_JOINTS);
 
   joint_states_history_size_ = 1;
@@ -276,13 +264,48 @@ bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandl
     joint_states_history_[i] = boost::circular_buffer<double>(joint_states_history_size_);
   }
 
+  wheel_names_.resize(NUMBER_OF_JOINTS);
+  wheel_names_[FRONT_RIGHT_TRACTION_JOINT] = "front_right";
+  wheel_names_[FRONT_LEFT_TRACTION_JOINT] = "front_left";
+  wheel_names_[BACK_RIGHT_TRACTION_JOINT] = "back_right";
+  wheel_names_[BACK_LEFT_TRACTION_JOINT] = "back_left";
+  wheel_names_[FRONT_RIGHT_DIRECTION_JOINT] = "front_right";
+  wheel_names_[FRONT_LEFT_DIRECTION_JOINT] = "front_left";
+  wheel_names_[BACK_RIGHT_DIRECTION_JOINT] = "back_right";
+  wheel_names_[BACK_LEFT_DIRECTION_JOINT] = "back_left";
+
   // set velocity limits
+  joint_names_.resize(NUMBER_OF_JOINTS);
   for (size_t i = BEGIN_TRACTION_JOINT; i < END_TRACTION_JOINT; i++)
   {
+    std::string param_joint_name;
+    std::string name = "";
+    param_joint_name = "traction/" + wheel_names_[i] + "/joint_name";
+    if (controller_nh.hasParam(param_joint_name) == false)
+    {
+      ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_ << "::initController: cannot find parameter "
+                                                                << param_joint_name << ". It is required!");
+      everything_ok = false;
+    }
+    else
+    {
+      controller_nh.param(param_joint_name, name, name);
+      if (name == "")
+      {
+        ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_
+                                                     << "::initController: parameter " << param_joint_name
+                                                     << " is an empty string. It is required to have a value!");
+        everything_ok = false;
+      }
+      else
+      {
+        joint_names_[i] = name;
+      }
+    }
     std::string param_limit_name;
     double max_speed = 0;
 
-    param_limit_name = "joint/" + joint_names_[i] + "/max_speed";
+    param_limit_name = "traction/" + wheel_names_[i] + "/max_speed";
     if (controller_nh.hasParam(param_limit_name) == false)
     {  // limit does not exist!
       ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_ << "::initController: cannot find parameter "
@@ -300,10 +323,34 @@ bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandl
   // set direction limits
   for (size_t i = BEGIN_DIRECTION_JOINT; i < END_DIRECTION_JOINT; i++)
   {
+    std::string param_joint_name;
+    std::string name = "";
+    param_joint_name = "steer/" + wheel_names_[i] + "/joint_name";
+    if (controller_nh.hasParam(param_joint_name) == false)
+    {
+      ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_ << "::initController: cannot find parameter "
+                                                                << param_joint_name << ". It is required!");
+      everything_ok = false;
+    }
+    else
+    {
+      controller_nh.param(param_joint_name, name, name);
+      if (name == "")
+      {
+        ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_
+                                                     << "::initController: parameter " << param_joint_name
+                                                     << " is an empty string. It is required to have a value!");
+        everything_ok = false;
+      }
+      else
+      {
+        joint_names_[i] = name;
+      }
+    }
     std::string param_limit_name;
     double min_angle = 0, max_angle = 0;
 
-    param_limit_name = "joint/" + joint_names_[i] + "/min_angle";
+    param_limit_name = "steer/" + wheel_names_[i] + "/min_angle";
     if (controller_nh.hasParam(param_limit_name) == false)
     {  // limit does not exist!
       ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_ << "::initController: cannot find parameter "
@@ -315,7 +362,7 @@ bool OmniDriveController::initController(ros::NodeHandle root_nh, ros::NodeHandl
       controller_nh.param(param_limit_name, min_angle, min_angle);
     }
 
-    param_limit_name = "joint/" + joint_names_[i] + "/max_angle";
+    param_limit_name = "steer/" + wheel_names_[i] + "/max_angle";
     if (controller_nh.hasParam(param_limit_name) == false)
     {  // limit does not exist!
       ROS_ERROR_STREAM_NAMED(controller_name_, controller_name_ << "::initController: cannot find parameter "
